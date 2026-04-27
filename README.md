@@ -29,7 +29,7 @@ Cookiecutter will prompt for seven values:
 | `author_email` | `jane@gladstone.ucsf.edu` |
 | `docker_username` | `jscientist` |
 | `python_version` | `3.11` |
-| `wynton_account_email` | defaults to `author_email` |
+| `notification_email` | defaults to `author_email` |
 
 After generation:
 

@@ -15,7 +15,7 @@ execution:
   use_apptainer: true
 
 notification:
-  email: "{{ cookiecutter.wynton_account_email }}"
+  email: "{{ cookiecutter.notification_email }}"
 
 # Wynton-writable output directory. TODO: edit to your project path.
 output_dir: "/wynton/scratch/{{ cookiecutter.author_email.split('@')[0] }}/{{ cookiecutter.project_slug }}/results"

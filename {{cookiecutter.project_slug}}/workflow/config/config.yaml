@@ -11,7 +11,7 @@ samples: "workflow/config/samples.tsv"
 
 # Email notification (optional). Requires 'mail' or 'sendmail' on the host.
 notification:
-  email: "{{ cookiecutter.wynton_account_email }}"
+  email: "{{ cookiecutter.notification_email }}"
 
 # Execution mode. Set exactly one to true.
 #   - use_docker: wraps each rule's shell in `docker run` (local testing)

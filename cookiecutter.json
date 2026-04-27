@@ -5,5 +5,14 @@
     "author_email": "you@gladstone.ucsf.edu",
     "docker_username": "your-dockerhub-user",
     "python_version": "3.11",
-    "wynton_account_email": "{{ cookiecutter.author_email }}"
+    "notification_email": "{{ cookiecutter.author_email }}",
+    "__prompts__": {
+        "project_name": "Display name for the pipeline",
+        "project_slug": "Repo / directory name (lowercase + hyphens; press Enter to auto-derive from project_name)",
+        "author_name": "Author full name",
+        "author_email": "Author institutional email",
+        "docker_username": "DockerHub username for building custom images (leave default to skip; the hello example runs without one)",
+        "python_version": "Python version (3.11 or 3.12)",
+        "notification_email": "Address to receive pipeline run notifications (success/failure emails)"
+    }
 }

@@ -7,7 +7,7 @@ EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 project_slug = "{{ cookiecutter.project_slug }}"
 author_email = "{{ cookiecutter.author_email }}"
-wynton_email = "{{ cookiecutter.wynton_account_email }}"
+notification_email = "{{ cookiecutter.notification_email }}"
 docker_username = "{{ cookiecutter.docker_username }}"
 python_version = "{{ cookiecutter.python_version }}"
 
@@ -20,7 +20,7 @@ if not SLUG_PATTERN.match(project_slug):
         "letters, digits, hyphens, or underscores."
     )
 
-for label, value in (("author_email", author_email), ("wynton_account_email", wynton_email)):
+for label, value in (("author_email", author_email), ("notification_email", notification_email)):
     if not EMAIL_PATTERN.match(value):
         errors.append(f"{label} {value!r} does not look like an email address.")
 
