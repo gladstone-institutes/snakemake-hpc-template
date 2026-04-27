@@ -1,0 +1,1 @@
+# snakemake-hpc-template
