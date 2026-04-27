@@ -1,0 +1,22 @@
+# Local profile for Docker-based testing.
+# Pure Docker: each rule wraps its shell in `docker run` via docker_run().
+# No Apptainer/Singularity required.
+
+executor: local
+cores: 4
+
+default-resources:
+  mem_free: "2G"
+  threads: 1
+
+# Per-rule resource overrides. Add blocks here as you add rules.
+set-resources:
+  hello:
+    mem_free: "512M"
+    threads: 1
+
+jobs: 1
+latency-wait: 30
+printshellcmds: true
+rerun-incomplete: true
+keep-going: false

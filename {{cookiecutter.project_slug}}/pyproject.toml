@@ -1,0 +1,21 @@
+[project]
+name = "{{ cookiecutter.project_slug }}"
+version = "0.1.0"
+description = "{{ cookiecutter.project_name }}"
+requires-python = ">={{ cookiecutter.python_version }}"
+authors = [
+    { name = "{{ cookiecutter.author_name }}", email = "{{ cookiecutter.author_email }}" },
+]
+dependencies = [
+    "snakemake>=9.14,<10",
+    "snakemake-executor-plugin-cluster-generic>=1.0",
+    "snakemake-storage-plugin-fs>=1.0",
+    "pandas>=2.0",
+    "pyarrow>=15.0",
+    "pyyaml>=6.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0",
+]

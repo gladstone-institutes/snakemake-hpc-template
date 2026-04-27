@@ -1,0 +1,9 @@
+{
+    "project_name": "My Snakemake Pipeline",
+    "project_slug": "{{ cookiecutter.project_name.lower().replace(' ', '-').replace('_', '-') }}",
+    "author_name": "Your Name",
+    "author_email": "you@gladstone.ucsf.edu",
+    "docker_username": "your-dockerhub-user",
+    "python_version": "3.11",
+    "wynton_account_email": "{{ cookiecutter.author_email }}"
+}

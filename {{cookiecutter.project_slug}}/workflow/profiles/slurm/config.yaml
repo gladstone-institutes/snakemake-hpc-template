@@ -1,0 +1,36 @@
+# Slurm profile stub. NOT YET VALIDATED — intended for UCSF CoreHPC.
+#
+# Prerequisites (do this once per clone):
+#   uv add snakemake-executor-plugin-slurm
+#
+# Plugin docs:
+#   https://snakemake.github.io/snakemake-plugin-catalog/plugins/executor/slurm.html
+#
+# Replace every "TODO" before using. See ./README.md in this directory.
+
+executor: slurm
+
+default-resources:
+  slurm_account: "TODO-your-account"
+  slurm_partition: "TODO-your-partition"
+  mem_mb: 4000
+  runtime: 60    # minutes
+  # tasks: 1
+  # cpus_per_task: 1
+
+set-resources:
+  hello:
+    mem_mb: 512
+    runtime: 10
+
+jobs: 50
+latency-wait: 60
+local-cores: 1
+
+software-deployment-method: [apptainer]
+# TODO: verify the right bind path for CoreHPC compute nodes.
+apptainer-args: "--bind /tmp"
+
+printshellcmds: true
+rerun-incomplete: true
+keep-going: true

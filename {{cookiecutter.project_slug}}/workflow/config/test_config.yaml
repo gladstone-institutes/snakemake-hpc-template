@@ -1,0 +1,27 @@
+# {{ cookiecutter.project_name }} - local Docker testing config.
+# Used by `./workflow/test_pipeline.sh run` (and dry-run).
+
+project_name: "{{ cookiecutter.project_slug }}-test"
+
+output_dir: ".tests/integration/results"
+samples: "workflow/config/test_samples.tsv"
+
+# Local Docker mode: docker_run() returns a `docker run` prefix.
+execution:
+  use_docker: true
+
+# Quickstart mode: use public Alpine so the template runs with no DockerHub
+# setup. Once you've built and pushed your own image with
+#   ./workflow/test_pipeline.sh build --push
+# swap the values below for:
+#   user: "{{ cookiecutter.docker_username }}"
+#   name: "hello"
+#   tag:  "0.1.0"
+containers:
+  dir: ""
+  auto_pull: true
+  images:
+    hello:
+      user: "library"
+      name: "alpine"
+      tag: "3.19"

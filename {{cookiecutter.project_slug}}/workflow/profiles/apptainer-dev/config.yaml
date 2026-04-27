@@ -1,0 +1,24 @@
+# Apptainer profile for dev-node / laptop Apptainer testing.
+# Mirrors `local/` but hands container execution to Snakemake's `container:`
+# directive instead of wrapping with `docker run`.
+
+executor: local
+cores: 2
+
+default-resources:
+  mem_free: "2G"
+  threads: 1
+
+set-resources:
+  hello:
+    mem_free: "512M"
+    threads: 1
+
+jobs: 1
+latency-wait: 30
+printshellcmds: true
+rerun-incomplete: true
+keep-going: false
+
+# Bind TMPDIR so container-side tempfile writes land on local disk.
+apptainer-args: "--bind $TMPDIR --env TMPDIR=$TMPDIR"

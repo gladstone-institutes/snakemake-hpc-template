@@ -1,0 +1,35 @@
+# {{ cookiecutter.project_name }} - production config.
+# Copy to config_<cluster>.yaml for per-cluster overrides.
+
+project_name: "{{ cookiecutter.project_slug }}"
+
+# Output directory for all results. TODO: point at a persistent location.
+output_dir: "results"
+
+# Sample metadata file (columns: sample_id, description, ...).
+samples: "workflow/config/samples.tsv"
+
+# Email notification (optional). Requires 'mail' or 'sendmail' on the host.
+notification:
+  email: "{{ cookiecutter.wynton_account_email }}"
+
+# Execution mode. Set exactly one to true.
+#   - use_docker: wraps each rule's shell in `docker run` (local testing)
+#   - use_apptainer: uses Snakemake's container: directive with Apptainer (HPC)
+execution:
+  use_docker: false
+  use_apptainer: true
+
+# Container configuration. Each rule references images by the keys under `images`.
+containers:
+  # Directory for pre-pulled Apptainer .sif files.
+  dir: ".snakemake/containers"
+  # Auto-pull missing .sif files at pipeline start (set false if you manage SIFs yourself).
+  auto_pull: true
+  # Extra paths to bind into Apptainer containers (shared filesystems outside $PWD).
+  bind_paths: []
+  images:
+    hello:
+      user: "{{ cookiecutter.docker_username }}"
+      name: "hello"
+      tag: "0.1.0"

@@ -1,0 +1,61 @@
+# SGE cluster profile. Tested on UCSF Wynton; generic enough for other SGE
+# sites with one env-var override (see status.sh).
+#
+# IMPORTANT: On Wynton, mem_free is PER-SLOT. Total memory reserved for a job
+# is mem_free * threads. For example, mem_free=8G with threads=4 reserves 32G.
+# 'threads' maps to SGE slots via `-pe smp {threads}`.
+
+executor: cluster-generic
+
+# -terse makes qsub output only the numeric job ID.
+cluster-generic-submit-cmd: |-
+  mkdir -p logs/{rule} &&
+  qsub -terse -S /bin/bash -cwd -j y -r y \
+    -N sm.{rule} \
+    -pe smp {threads} \
+    -l mem_free={resources.mem_free} \
+    -l scratch={resources.scratch} \
+    -l h_rt={resources.h_rt} \
+    -o logs/{rule}/{jobid}.log
+
+# qstat alone treats crashes as success; status.sh consults qacct exit_status.
+# See status.sh for the full rationale.
+cluster-generic-status-cmd: "bash workflow/profiles/sge/status.sh"
+
+cluster-generic-cancel-cmd: "qdel"
+
+default-resources:
+  mem_free: "4G"
+  scratch: "2G"
+  h_rt: "01:00:00"
+
+# Per-rule thread counts. IMPORTANT: use `set-threads`, not `set-resources`,
+# to override a rule's threads directive. `threads` under set-resources only
+# creates a resource, it does not bind the rule's `threads:` block.
+set-threads:
+  hello: 1
+
+# Per-rule resource overrides. Commented example below shows the per-slot
+# mem_free gotcha: 10G * 24 threads = 240G total.
+set-resources:
+  hello:
+    mem_free: "512M"
+    scratch: "1G"
+    h_rt: "00:30:00"
+  # heavy_rule:
+  #   mem_free: "10G"        # 10G * 24 slots = 240G total
+  #   scratch: "20G"
+  #   h_rt:    "48:00:00"
+
+jobs: 50
+latency-wait: 120
+max-jobs-per-second: 5
+max-status-checks-per-second: 2
+local-cores: 1
+
+software-deployment-method: [apptainer]
+apptainer-args: "--bind /scratch"
+
+printshellcmds: true
+rerun-incomplete: true
+keep-going: true

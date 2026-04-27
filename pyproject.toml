@@ -1,0 +1,16 @@
+[project]
+name = "snakemake-hpc-template"
+version = "0.1.0"
+description = "Cookiecutter template for Snakemake + uv pipelines on UCSF / Gladstone HPC."
+requires-python = ">=3.11"
+
+[tool.uv]
+# Non-installable: no library code at the template root, just dev tooling.
+package = false
+
+[dependency-groups]
+dev = [
+    "cookiecutter>=2.5",
+    "pytest>=7.0",
+    "pytest-cookies>=0.7",
+]
