@@ -2,7 +2,7 @@
 import re
 import sys
 
-SLUG_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*$")
+SLUG_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 project_slug = "{{ cookiecutter.project_slug }}"
@@ -16,8 +16,8 @@ errors = []
 if not SLUG_PATTERN.match(project_slug):
     errors.append(
         f"project_slug {project_slug!r} is invalid. "
-        "Must start with a lowercase letter and contain only lowercase "
-        "letters, digits, hyphens, or underscores."
+        "Must start with a letter or digit and contain only letters, "
+        "digits, hyphens, or underscores."
     )
 
 for label, value in (("author_email", author_email), ("notification_email", notification_email)):
