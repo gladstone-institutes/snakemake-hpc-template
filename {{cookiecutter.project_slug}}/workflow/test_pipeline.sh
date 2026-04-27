@@ -1,7 +1,11 @@
 #!/bin/bash
 # Test-harness CLI for {{ cookiecutter.project_name }}.
 #
-# Requires snakemake on the host (e.g. after `uv sync && source .venv/bin/activate`).
+# Requires snakemake on $PATH. Recommended: prefix with `uv run` so the
+# project's .venv is used without a separate `source .venv/bin/activate`:
+#
+#   uv sync                                      # once, after a fresh clone
+#   uv run ./workflow/test_pipeline.sh dry-run
 #
 # Usage:
 #   ./workflow/test_pipeline.sh [command] [extra snakemake args...]

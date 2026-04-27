@@ -36,10 +36,11 @@ After generation:
 ```bash
 cd my-snakemake-pipeline
 uv sync
-source .venv/bin/activate
-./workflow/test_pipeline.sh dry-run    # DAG resolves
-./workflow/test_pipeline.sh run        # runs the hello-world example in Docker
+uv run ./workflow/test_pipeline.sh dry-run    # DAG resolves
+uv run ./workflow/test_pipeline.sh run        # runs the hello-world example in Docker
 ```
+
+`uv run` syncs the env on demand and runs the script with the project's `.venv` on `$PATH`, so you don't need `source .venv/bin/activate`.
 
 ## Scaffolding into an existing repo
 

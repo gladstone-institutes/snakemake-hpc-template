@@ -11,9 +11,10 @@ CoreHPC Slurm, container building, troubleshooting) live in
 
 ```bash
 uv sync
-source .venv/bin/activate
-./workflow/test_pipeline.sh dry-run    # resolve the DAG
-./workflow/test_pipeline.sh run        # run the hello-world example in Docker
+uv run ./workflow/test_pipeline.sh dry-run    # resolve the DAG
+uv run ./workflow/test_pipeline.sh run        # run the hello-world example in Docker
 ```
+
+`uv run` keeps deps in sync with `pyproject.toml` and runs each command with the project's `.venv` on `$PATH`, so there's no `activate` step.
 
 See [`docs/PIPELINE.md`](docs/PIPELINE.md) for the rest.

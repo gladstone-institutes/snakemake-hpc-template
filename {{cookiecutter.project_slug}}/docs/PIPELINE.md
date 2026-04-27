@@ -17,8 +17,9 @@ paths).
 
 ```bash
 uv sync
-source .venv/bin/activate
 ```
+
+All pipeline commands below are prefixed with `uv run`, which runs each command with the project's `.venv` on `$PATH` (no `source .venv/bin/activate` needed) and keeps deps in sync with `pyproject.toml`. If you prefer the activate flow, `source .venv/bin/activate` once and drop the `uv run` prefix.
 
 Edit `workflow/config/config.yaml` and add samples to `workflow/config/samples.tsv` (columns: `sample_id`, `description`, plus whatever your rules need).
 
@@ -27,9 +28,9 @@ Edit `workflow/config/config.yaml` and add samples to `workflow/config/samples.t
 The template ships with a single `hello` rule that writes a greeting per sample. It exercises every execution mode without you writing any code.
 
 ```bash
-./workflow/test_pipeline.sh dry-run        # resolve the DAG
-./workflow/test_pipeline.sh run            # run locally in Docker (uses public alpine by default)
-./workflow/test_pipeline.sh run-apptainer  # run locally with Apptainer
+uv run ./workflow/test_pipeline.sh dry-run        # resolve the DAG
+uv run ./workflow/test_pipeline.sh run            # run locally in Docker (uses public alpine by default)
+uv run ./workflow/test_pipeline.sh run-apptainer  # run locally with Apptainer
 ```
 
 Outputs land in `.tests/integration/results/<sample>/hello.txt`.
@@ -41,7 +42,7 @@ Image building happens **outside** a pipeline run, ahead of time. Snakemake rule
 The lifecycle for a custom image:
 
 1. **Edit the Dockerfile** at `workflow/containers/<name>/Dockerfile`. The `LABEL version="X.Y.Z"` line is the single source of truth for the image version — `build.sh` reads it to tag the build, and the config file's `tag:` field below must match.
-2. **Build** locally:
+2. **Build** locally (the `build` subcommand only shells out to `docker build`, so the `uv run` prefix is optional here):
    ```bash
    ./workflow/test_pipeline.sh build <name>            # one image
    ./workflow/test_pipeline.sh build                   # every image under workflow/containers/
@@ -63,9 +64,9 @@ The `docker_username` you supplied at cookiecutter time is baked into both `buil
 ssh log1.wynton.ucsf.edu
 cd <your clone>
 uv sync
-./workflow/test_pipeline.sh build --push    # optional: push custom images first
-./workflow/test_pipeline.sh dry-run-sge
-./workflow/test_pipeline.sh run-sge
+./workflow/test_pipeline.sh build --push          # optional: push custom images first
+uv run ./workflow/test_pipeline.sh dry-run-sge
+uv run ./workflow/test_pipeline.sh run-sge
 ```
 
 Wynton defaults are baked in: `/opt/sge/wynton/common/accounting` for qacct status checks (overridable via the `SGE_ACCOUNTING` env var for non-Wynton SGE sites), `--bind /scratch` for Apptainer, and `mem_free` resource semantics accounted for per-slot in `workflow/profiles/sge/config.yaml`.

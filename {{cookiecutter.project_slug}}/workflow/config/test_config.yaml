@@ -14,8 +14,11 @@ execution:
   use_docker: true
   use_apptainer: false
 
-# Quickstart mode: use public Alpine so the template runs with no DockerHub
-# setup. Once you've built and pushed your own image with
+# Quickstart mode: use the public bash image so the template runs with no
+# DockerHub setup. Bash is required for Apptainer mode because Snakemake
+# wraps every rule shell in `bash -c 'set -euo pipefail; ...'`; plain alpine
+# would fail with `"bash": executable file not found in $PATH`.
+# Once you've built and pushed your own image with
 #   ./workflow/test_pipeline.sh build --push
 # swap the values below for:
 #   user: "{{ cookiecutter.docker_username }}"
@@ -27,5 +30,5 @@ containers:
   images:
     hello:
       user: "library"
-      name: "alpine"
-      tag: "3.19"
+      name: "bash"
+      tag: "5"
