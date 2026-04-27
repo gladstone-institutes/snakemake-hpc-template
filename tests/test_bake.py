@@ -3,6 +3,7 @@ from pathlib import Path
 
 EXPECTED = [
     "README.md",
+    "docs/PIPELINE.md",
     "pyproject.toml",
     ".gitignore",
     ".python-version",

@@ -12,7 +12,7 @@
         "author_name": "Author full name",
         "author_email": "Author institutional email",
         "docker_username": "DockerHub username for building custom images (leave default to skip; the hello example runs without one)",
-        "python_version": "Python version (3.11 or 3.12)",
+        "python_version": "Python version (3.11+; floor is set by snakemake 9.14)",
         "notification_email": "Address to receive pipeline run notifications (success/failure emails)"
     }
 }

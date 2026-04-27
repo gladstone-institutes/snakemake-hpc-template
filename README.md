@@ -41,6 +41,20 @@ source .venv/bin/activate
 ./workflow/test_pipeline.sh run        # runs the hello-world example in Docker
 ```
 
+## Scaffolding into an existing repo
+
+If you already have a pipeline repo and want to add this scaffolding without overwriting your existing `README.md`, `pyproject.toml`, etc., use cookiecutter's `--overwrite-if-exists` + `--skip-if-file-exists` flags and pass `project_slug` as the directory name of your existing repo:
+
+```bash
+cd /path/to/parent-of-existing-repo
+cookiecutter gh:gladstone-institutes/snakemake-hpc-template \
+    --output-dir . \
+    --overwrite-if-exists --skip-if-file-exists \
+    project_slug=existing-repo-name
+```
+
+Files that already exist in your repo are preserved; everything new (including pipeline-specific docs at `docs/PIPELINE.md`) lands cleanly. The post-gen hook detects an existing `.git` and skips the initial-commit step. Review the new files with `git status` and commit selectively.
+
 ## What's in the generated project
 
 ```
