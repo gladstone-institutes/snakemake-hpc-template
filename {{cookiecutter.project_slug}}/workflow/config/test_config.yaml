@@ -7,8 +7,12 @@ output_dir: ".tests/integration/results"
 samples: "workflow/config/test_samples.tsv"
 
 # Local Docker mode: docker_run() returns a `docker run` prefix.
+# Both flags must be set explicitly: --configfile deep-merges with config.yaml,
+# so omitting use_apptainer leaves the production default (true) in effect and
+# trips the SIF auto-pull in onstart.
 execution:
   use_docker: true
+  use_apptainer: false
 
 # Quickstart mode: use public Alpine so the template runs with no DockerHub
 # setup. Once you've built and pushed your own image with
