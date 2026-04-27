@@ -43,17 +43,19 @@ source .venv/bin/activate
 
 ## Scaffolding into an existing repo
 
-If you already have a pipeline repo and want to add this scaffolding without overwriting your existing `README.md`, `pyproject.toml`, etc., use cookiecutter's `--overwrite-if-exists` + `--skip-if-file-exists` flags and pass `project_slug` as the directory name of your existing repo:
+If you already have a pipeline repo and want to add this scaffolding without overwriting your existing `README.md`, `pyproject.toml`, etc., use cookiecutter's `--overwrite-if-exists` + `--skip-if-file-exists` flags. Run **from inside your existing repo** with `--output-dir ..` so cookiecutter renders into your repo (not a nested subdirectory):
 
 ```bash
-cd /path/to/parent-of-existing-repo
+cd /path/to/your-existing-repo
 cookiecutter gh:gladstone-institutes/snakemake-hpc-template \
-    --output-dir . \
+    --output-dir .. \
     --overwrite-if-exists --skip-if-file-exists \
-    project_slug=existing-repo-name
+    project_slug="$(basename "$PWD")"
 ```
 
-Files that already exist in your repo are preserved; everything new (including pipeline-specific docs at `docs/PIPELINE.md`) lands cleanly. The post-gen hook detects an existing `.git` and skips the initial-commit step. Review the new files with `git status` and commit selectively.
+Cookiecutter always writes to `<output-dir>/<project_slug>/`. Setting `--output-dir ..` and `project_slug=<your-repo-dir-name>` makes that path resolve back to your current directory. **Do not run with `--output-dir .` from inside the repo** — that produces a nested `<repo>/<repo>/` tree.
+
+Files that already exist in your repo are preserved; everything new (including the pipeline-specific docs at `docs/PIPELINE.md`) lands cleanly. The post-gen hook detects an existing `.git` and skips the initial-commit step. Review the new files with `git status` and commit selectively.
 
 ## What's in the generated project
 
