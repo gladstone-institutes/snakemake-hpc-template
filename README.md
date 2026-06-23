@@ -1,14 +1,17 @@
 # snakemake-hpc-template
 
-A cookiecutter template for Snakemake + uv pipelines, optimized for **UCSF / Gladstone HPC** users.
+A cookiecutter template for Snakemake + uv pipelines, built for **UCSF / Gladstone HPC** users.
 
-- **Wynton HPC (SGE)** — fully supported, tested defaults (accounting path, scratch bind, notification email).
-- **UCSF CoreHPC (Slurm)** — fully supported with GPU, validated defaults (`hpc_core` account, `/mnt/scratch` bind, `small_gpu`/L40s routing).
-- **Local Docker or Apptainer** — one-command `./workflow/test_pipeline.sh run` works on a laptop.
-- **Optional local image building** — `./workflow/test_pipeline.sh build [--push]` wraps every `workflow/containers/*/build.sh`. Image development assumes Docker; Apptainer is used only to *run* prebuilt images on HPC.
-- **uv-managed Python environment** — fast, lock-file-backed.
+The same workflow runs four ways:
 
-Users on other SGE or Slurm clusters are welcome; the generated project's docs (`docs/PIPELINE.md` and `profiles/*/README.md`) document the small set of values to adjust — `SGE_ACCOUNTING` (env var consumed by `profiles/sge/status.sh`) and bind paths in `config_wynton.yaml.example`, or `slurm_account` (in `profiles/slurm/config.yaml`) and bind paths in `config_corehpc.yaml.example`. Gladstone-specific defaults (the `/gladstone/bioinformatics` and `/mnt/scratch` binds) are flagged inline in those example files.
+- **Wynton HPC (SGE)**, with tested defaults for the accounting path, scratch bind, and notification email.
+- **UCSF CoreHPC (Slurm)**, with GPU support and validated defaults (`hpc_core` account, `/mnt/scratch` bind, `small_gpu`/L40s routing).
+- **Local Docker or Apptainer** on a laptop, via one command: `./workflow/test_pipeline.sh run`.
+- **uv-managed Python**, fast and lock-file-backed.
+
+You can build container images locally too. `./workflow/test_pipeline.sh build [--push]` wraps every `workflow/containers/*/build.sh`. Build with Docker; Apptainer only *runs* prebuilt images on HPC.
+
+On a different SGE or Slurm cluster? You only need to adjust a few values. The generated project's `docs/PIPELINE.md` and `profiles/*/README.md` list them. Gladstone-specific binds (`/gladstone/bioinformatics` and `/mnt/scratch`) are flagged inline in the `config_*.yaml.example` files.
 
 ## Quickstart
 
@@ -40,15 +43,15 @@ uv run ./workflow/test_pipeline.sh dry-run    # DAG resolves
 uv run ./workflow/test_pipeline.sh run        # runs the hello-world example in Docker
 ```
 
-`uv run` syncs the env on demand and runs the script with the project's `.venv` on `$PATH`, so you don't need `source .venv/bin/activate`.
+`uv run` syncs the environment and runs each command inside the project's `.venv`, so you never need to activate it by hand.
 
 ## Wiring in your own workflow
 
-Once the hello-world example runs, swap it for your real pipeline. The generated project ships an `AGENTS.md` that walks you (or a coding agent such as Claude Code or Cursor) through turning existing R / Python / bash scripts into Snakemake rules, including the checklist of questions to answer before adding each rule. Point your agent at `AGENTS.md` and follow it.
+Once the hello-world example runs, swap it for your real pipeline. The generated project ships an `AGENTS.md` that turns your existing R, Python, or bash scripts into Snakemake rules. It includes the checklist to work through before adding each rule. Point a coding agent (Claude Code, Cursor) at `AGENTS.md`, or follow it yourself.
 
 ## Scaffolding into an existing repo
 
-If you already have a pipeline repo and want to add this scaffolding without overwriting your existing `README.md`, `pyproject.toml`, etc., use cookiecutter's `--overwrite-if-exists` + `--skip-if-file-exists` flags. Run **from inside your existing repo** with `--output-dir ..` so cookiecutter renders into your repo (not a nested subdirectory):
+Already have a pipeline repo? You can add this scaffolding without overwriting your `README.md`, `pyproject.toml`, and other files. Use cookiecutter's `--overwrite-if-exists` and `--skip-if-file-exists` flags, and run **from inside your repo** with `--output-dir ..` so it renders into your repo rather than a nested subdirectory:
 
 ```bash
 cd /path/to/your-existing-repo
@@ -58,9 +61,9 @@ cookiecutter gh:gladstone-institutes/snakemake-hpc-template \
     project_slug="$(basename "$PWD")"
 ```
 
-Cookiecutter always writes to `<output-dir>/<project_slug>/`. Setting `--output-dir ..` and `project_slug=<your-repo-dir-name>` makes that path resolve back to your current directory. **Do not run with `--output-dir .` from inside the repo** — that produces a nested `<repo>/<repo>/` tree.
+Cookiecutter always writes to `<output-dir>/<project_slug>/`. Setting `--output-dir ..` with `project_slug` as your repo's folder name points that path back at your current directory. **Do not run with `--output-dir .` from inside the repo.** That produces a nested `<repo>/<repo>/` tree.
 
-Files that already exist in your repo are preserved; everything new (including the pipeline-specific docs at `docs/PIPELINE.md`) lands cleanly. The post-gen hook detects an existing `.git` and skips the initial-commit step. Review the new files with `git status` and commit selectively.
+Your existing files are preserved. Everything new lands cleanly, including the docs at `docs/PIPELINE.md`. The post-gen hook detects an existing `.git` and skips its initial commit. Review the new files with `git status` and commit what you want.
 
 ## What's in the generated project
 
