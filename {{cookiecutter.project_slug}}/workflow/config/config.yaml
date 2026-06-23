@@ -9,13 +9,39 @@ output_dir: "results"
 # Sample metadata file (columns: sample_id, description, ...).
 samples: "workflow/config/samples.tsv"
 
+# Per-rule compute resources. Canonical units: total memory in GB, total
+# runtime in minutes, thread count. workflow/rules/common.smk:_resources()
+# translates these to scheduler-specific keys per the active profile:
+#   SGE   -> mem_free (per-slot), scratch, h_rt (HH:MM:SS), gpu
+#   Slurm -> mem_mb (total), runtime (minutes), gres (for --gres on GPU rules)
+# Every rule needs an entry here. Cluster configs (config_<cluster>.yaml) can
+# override individual keys by adding a resources: block with just what changes.
+resources:
+  hello:
+    threads: 1
+    mem_gb: 1
+    runtime_min: 10
+    # scratch_gb: 1   # SGE only
+
+# GPU settings (used only when a rule passes gpu=True to the helpers). Defaults
+# target UCSF CoreHPC L40s nodes; see workflow/profiles/slurm/README.md.
+gpu:
+  # CoreHPC Slurm: GPU rules are routed to this partition with this gres string.
+  slurm_partition: "small_gpu"
+  slurm_gres: "gpu:nvidia_l40s:1"
+  # Interval (seconds) for the optional nvidia-smi utilization sampler.
+  sampler_interval_s: 5
+  # sge_gpu_mem: "8G"   # SGE gpu.q only (requires extending the sge submit-cmd)
+
 # Email notification (optional). Requires 'mail' or 'sendmail' on the host.
 notification:
   email: "{{ cookiecutter.notification_email }}"
 
-# Execution mode. Set exactly one to true.
-#   - use_docker: wraps each rule's shell in `docker run` (local testing)
-#   - use_apptainer: uses Snakemake's container: directive with Apptainer (HPC)
+# Execution mode. Set exactly one to true (both false = run on the host).
+#   - use_docker:    wraps each rule's shell in `docker run`     (local testing)
+#   - use_apptainer: wraps each rule's shell in `apptainer exec` (HPC)
+# Containers are launched via the docker_run()/apptainer_run() shell prefixes in
+# common.smk, NOT Snakemake's `container:` directive.
 execution:
   use_docker: false
   use_apptainer: true

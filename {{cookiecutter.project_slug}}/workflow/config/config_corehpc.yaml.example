@@ -1,0 +1,48 @@
+# {{ cookiecutter.project_name }} - UCSF CoreHPC (Slurm) production config.
+#
+# Run on the cluster:
+#   snakemake --snakefile workflow/Snakefile \
+#       --configfile workflow/config/config_corehpc.yaml \
+#       --profile workflow/profiles/slurm --dry-run     # confirm DAG first
+#   snakemake --snakefile workflow/Snakefile \
+#       --configfile workflow/config/config_corehpc.yaml \
+#       --profile workflow/profiles/slurm               # run live
+#
+# This file only OVERRIDES paths; everything else (resources:, gpu:, images:)
+# is inherited from workflow/config/config.yaml. GPU routing (partition + gres)
+# lives in the `gpu:` block of config.yaml; the Slurm account/partition defaults
+# live in workflow/profiles/slurm/config.yaml.
+#
+# Non-Gladstone CoreHPC users: edit `output_dir`, `containers.dir`, and
+# `containers.bind_paths` to point at your own storage.
+
+project_name: "{{ cookiecutter.project_slug }}"
+
+execution:
+  use_docker: false
+  use_apptainer: true
+
+notification:
+  email: "{{ cookiecutter.notification_email }}"
+
+# CoreHPC Hive storage (visible as /mnt/... from compute nodes). TODO: edit to
+# your project path.
+output_dir: "/mnt/gladstone/bioinformatics/projects/{{ cookiecutter.project_slug }}/results"
+
+samples: "workflow/config/samples.tsv"
+
+containers:
+  # Directory of pre-pulled .sif files. Shared across runs/users if you want.
+  dir: "/mnt/gladstone/bioinformatics/projects/{{ cookiecutter.project_slug }}/containers"
+  auto_pull: true
+  # Paths to bind into Apptainer containers. /mnt/scratch is shared scratch on
+  # CoreHPC compute nodes and is required for GPU jobs (tempfiles, matplotlib
+  # font cache, pyarrow spill must reach a path inside the container).
+  bind_paths:
+    - "/mnt/scratch"
+    - "/mnt/gladstone/bioinformatics/projects/{{ cookiecutter.project_slug }}"
+  images:
+    hello:
+      user: "{{ cookiecutter.docker_username }}"
+      name: "hello"
+      tag: "0.1.0"

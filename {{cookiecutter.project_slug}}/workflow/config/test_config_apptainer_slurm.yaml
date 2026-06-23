@@ -1,0 +1,17 @@
+# Apptainer overlay for dry-run-slurm / run-slurm.
+# Deep-merges on top of test_config.yaml. Flips Docker -> Apptainer and points
+# containers.dir at a CoreHPC path. Parallel to test_config_apptainer.yaml
+# (which targets Wynton SGE).
+#
+# Non-Gladstone CoreHPC users: override `containers.dir` with
+# --config containers.dir=/your/path on the snakemake CLI.
+
+execution:
+  use_docker: false
+  use_apptainer: true
+
+containers:
+  dir: "/mnt/gladstone/bioinformatics/projects/{{ cookiecutter.project_slug }}/containers"
+  # Shared scratch on CoreHPC compute nodes.
+  bind_paths:
+    - "/mnt/scratch"

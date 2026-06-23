@@ -3,9 +3,17 @@
 #
 # IMPORTANT: On Wynton, mem_free is PER-SLOT. Total memory reserved for a job
 # is mem_free * threads. For example, mem_free=8G with threads=4 reserves 32G.
-# 'threads' maps to SGE slots via `-pe smp {threads}`.
+# common.smk:_resources() handles this: it divides a rule's canonical mem_gb by
+# its thread count to emit the per-slot mem_free. 'threads' maps to SGE slots
+# via `-pe smp {threads}`.
 
 executor: cluster-generic
+
+# Tells common.smk which scheduler is active, so apptainer_run() knows how to
+# wire CUDA_VISIBLE_DEVICES on GPU rules (SGE exposes the index in $SGE_GPU and
+# needs a manual map; Slurm sets it via cgroups). See common.smk:apptainer_run.
+config:
+  scheduler: "sge"
 
 # -terse makes qsub output only the numeric job ID.
 cluster-generic-submit-cmd: |-
@@ -28,24 +36,19 @@ default-resources:
   mem_free: "4G"
   scratch: "2G"
   h_rt: "01:00:00"
+  gpu: 0
 
-# Per-rule thread counts. IMPORTANT: use `set-threads`, not `set-resources`,
-# to override a rule's threads directive. `threads` under set-resources only
-# creates a resource, it does not bind the rule's `threads:` block.
-set-threads:
-  hello: 1
-
-# Per-rule resource overrides. Commented example below shows the per-slot
-# mem_free gotcha: 10G * 24 threads = 240G total.
-set-resources:
-  hello:
-    mem_free: "512M"
-    scratch: "1G"
-    h_rt: "00:30:00"
-  # heavy_rule:
-  #   mem_free: "10G"        # 10G * 24 slots = 240G total
-  #   scratch: "20G"
-  #   h_rt:    "48:00:00"
+# Rules own their resources/threads via _resources()/_threads() in common.smk,
+# read from config["resources"][rule]. Uncomment entries here only when
+# on-cluster tuning needs to differ from the config defaults. IMPORTANT: use
+# `set-threads` (not `set-resources`) to override a rule's threads directive.
+# set-threads:
+#   hello: 1
+# set-resources:
+#   heavy_rule:
+#     mem_free: "10G"        # per-slot: 10G * 24 slots = 240G total
+#     scratch: "20G"
+#     h_rt:    "48:00:00"
 
 jobs: 50
 latency-wait: 120
@@ -53,8 +56,14 @@ max-jobs-per-second: 5
 max-status-checks-per-second: 2
 local-cores: 1
 
-software-deployment-method: [apptainer]
-apptainer-args: "--bind /scratch"
+# NOTE: We do not use Snakemake's `software-deployment-method` / `apptainer-args`
+# here. Rules invoke apptainer directly via the apptainer_run() shell prefix from
+# common.smk, which reads bind paths from `containers.bind_paths` in the config.
+#
+# SGE GPU jobs: common.smk carries the $SGE_GPU mapping and a `gpu` resource,
+# but routing jobs to gpu.q requires extending the submit-cmd above (e.g. add
+# `-q gpu.q -l gpu_mem={config[gpu][sge_gpu_mem]}` when {resources.gpu} == 1).
+# The validated GPU path in this template is CoreHPC Slurm (profiles/slurm/).
 
 printshellcmds: true
 rerun-incomplete: true

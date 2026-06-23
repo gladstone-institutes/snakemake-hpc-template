@@ -3,12 +3,12 @@
 A cookiecutter template for Snakemake + uv pipelines, optimized for **UCSF / Gladstone HPC** users.
 
 - **Wynton HPC (SGE)** — fully supported, tested defaults (accounting path, scratch bind, notification email).
-- **UCSF CoreHPC (Slurm)** — stub profile ships with TODOs; not yet validated.
+- **UCSF CoreHPC (Slurm)** — fully supported with GPU, validated defaults (`hpc_core` account, `/mnt/scratch` bind, `small_gpu`/L40s routing).
 - **Local Docker or Apptainer** — one-command `./workflow/test_pipeline.sh run` works on a laptop.
 - **Optional local image building** — `./workflow/test_pipeline.sh build [--push]` wraps every `workflow/containers/*/build.sh`. Image development assumes Docker; Apptainer is used only to *run* prebuilt images on HPC.
 - **uv-managed Python environment** — fast, lock-file-backed.
 
-Users on other SGE clusters are welcome; the generated project's README documents the small set of paths to adjust — `SGE_ACCOUNTING` (env var consumed by `profiles/sge/status.sh`) and the Apptainer bind paths in `config_wynton.yaml.example`. Gladstone-specific defaults (the `/gladstone/bioinformatics` bind) are flagged inline in that example file.
+Users on other SGE or Slurm clusters are welcome; the generated project's docs (`docs/PIPELINE.md` and `profiles/*/README.md`) document the small set of values to adjust — `SGE_ACCOUNTING` (env var consumed by `profiles/sge/status.sh`) and bind paths in `config_wynton.yaml.example`, or `slurm_account` (in `profiles/slurm/config.yaml`) and bind paths in `config_corehpc.yaml.example`. Gladstone-specific defaults (the `/gladstone/bioinformatics` and `/mnt/scratch` binds) are flagged inline in those example files.
 
 ## Quickstart
 
@@ -42,6 +42,10 @@ uv run ./workflow/test_pipeline.sh run        # runs the hello-world example in 
 
 `uv run` syncs the env on demand and runs the script with the project's `.venv` on `$PATH`, so you don't need `source .venv/bin/activate`.
 
+## Wiring in your own workflow
+
+Once the hello-world example runs, swap it for your real pipeline. The generated project ships an `AGENTS.md` that walks you (or a coding agent such as Claude Code or Cursor) through turning existing R / Python / bash scripts into Snakemake rules, including the checklist of questions to answer before adding each rule. Point your agent at `AGENTS.md` and follow it.
+
 ## Scaffolding into an existing repo
 
 If you already have a pipeline repo and want to add this scaffolding without overwriting your existing `README.md`, `pyproject.toml`, etc., use cookiecutter's `--overwrite-if-exists` + `--skip-if-file-exists` flags. Run **from inside your existing repo** with `--output-dir ..` so cookiecutter renders into your repo (not a nested subdirectory):
@@ -63,20 +67,21 @@ Files that already exist in your repo are preserved; everything new (including t
 ```
 my-snakemake-pipeline/
 ├── pyproject.toml                # snakemake, pandas, pyarrow, pyyaml + pytest
+├── AGENTS.md                     # guide for coding agents wiring in existing scripts
 ├── workflow/
 │   ├── Snakefile                 # onstart/onsuccess/onerror hooks wired
 │   ├── rules/
-│   │   ├── common.smk            # sample loader, docker_run(), container helpers, notifications
+│   │   ├── common.smk            # sample loader, docker_run/apptainer_run, _resources, notifications
 │   │   └── hello.smk             # one example rule
-│   ├── config/                   # test_config.yaml (Docker), config.yaml (production), etc.
+│   ├── config/                   # config.yaml (resources:/gpu:), test_config.yaml, cluster examples
 │   ├── profiles/
 │   │   ├── local/                # Docker executor
 │   │   ├── apptainer-dev/        # Apptainer on a laptop/dev node
 │   │   ├── sge/                  # Wynton SGE (working)
-│   │   └── slurm/                # CoreHPC Slurm (stub; TODOs)
+│   │   └── slurm/                # CoreHPC Slurm (working, GPU)
 │   ├── containers/
 │   │   └── hello/                # Dockerfile + build.sh
-│   └── test_pipeline.sh          # dry-run | run | run-apptainer | run-sge | build | ...
+│   └── test_pipeline.sh          # dry-run | run | run-apptainer | run-sge | run-slurm | build | ...
 └── tests/                        # pytest smoke tests
 ```
 

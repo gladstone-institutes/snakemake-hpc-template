@@ -2,10 +2,28 @@
 
 Operational documentation for this Snakemake pipeline, scaffolded from
 [snakemake-hpc-template](https://github.com/gladstone-institutes/snakemake-hpc-template).
-Defaults are tuned for **Wynton SGE** (used by UCSF and Gladstone) with a stub
-profile for **UCSF CoreHPC (Slurm)**. Users on other SGE clusters can run it
-with a small set of documented edits (SGE accounting path and Apptainer bind
-paths).
+Defaults are tuned for **Wynton SGE** and **UCSF CoreHPC (Slurm, with GPU)**,
+both used at UCSF and Gladstone and both validated end-to-end. Users on other
+SGE / Slurm clusters can run it with a small set of documented edits (accounting
+path or Slurm account, and Apptainer bind paths).
+
+> Using a coding agent to wire your existing scripts into the pipeline? Point it at
+> [`../AGENTS.md`](../AGENTS.md) - it covers the rule conventions and the checklist of
+> questions to answer before adding a rule.
+
+## How containers and resources are wired
+
+The same rule runs unchanged across four modes (local Docker, local Apptainer,
+Wynton SGE, CoreHPC Slurm). Two helpers in `workflow/rules/common.smk` make that
+work; Snakemake's `container:` directive is **not** used:
+
+- **`docker_run("img")`** expands to a `docker run ...` prefix in Docker mode, `""` otherwise.
+- **`apptainer_run("img", gpu=...)`** expands to an `apptainer exec ...` prefix in Apptainer mode, `""` otherwise. With both empty (host mode) the command runs directly.
+
+Per-rule compute resources live in the `resources:` block of
+`workflow/config/config.yaml` as canonical units (`threads`, `mem_gb`,
+`runtime_min`). `common.smk:_resources()` translates them to SGE or Slurm keys
+based on the active profile, so you specify a rule's needs once.
 
 ## Prerequisites
 
@@ -73,16 +91,60 @@ Wynton defaults are baked in: `/opt/sge/wynton/common/accounting` for qacct stat
 
 Non-Gladstone Wynton users: see `workflow/config/config_wynton.yaml.example` for the one place where `/gladstone/bioinformatics` appears (bind paths) — edit to match your storage.
 
-## Running on UCSF CoreHPC (Slurm) — experimental
+## Running on UCSF CoreHPC (Slurm)
 
-See [`../workflow/profiles/slurm/README.md`](../workflow/profiles/slurm/README.md). The profile ships as a TODO stub; it has not been validated against CoreHPC. Expect to fill in `slurm_account`, `slurm_partition`, and bind paths.
+```bash
+ssh <you>@plog1.cmf.ucsf.edu      # a CoreHPC login node
+cd <your clone>
+uv sync
+cp workflow/config/config_corehpc.yaml.example workflow/config/config_corehpc.yaml  # edit paths
+uv run ./workflow/test_pipeline.sh dry-run-slurm   # validate DAG with the hello example
+uv run ./workflow/test_pipeline.sh run-slurm       # or run real samples via --configfile config_corehpc.yaml
+```
+
+The Slurm account/partition defaults (`hpc_core` / `cpu`) are baked into
+`workflow/profiles/slurm/config.yaml`; `/mnt/scratch` and your project storage
+are bound via `containers.bind_paths`. Full details (resource mapping, the
+greedy-scheduler and `gres` gotchas) are in
+[`../workflow/profiles/slurm/README.md`](../workflow/profiles/slurm/README.md).
+
+### GPU rules
+
+GPU support is config-driven. To make a rule use a GPU, pass `gpu=True` to both
+`apptainer_run()` and `_resources()`:
+
+```python
+rule train:
+    output: "{output_dir}/{sample}/model.pt"
+    params:
+        docker=docker_run("mytool"),
+        apptainer=apptainer_run("mytool", gpu=True),
+        # optional: log nvidia-smi utilization to gpu_usage_train_<jobid>.csv
+        gpu_sampler=lambda w, output: gpu_sampler_prefix(
+            Path(output[0]).parent, "train", gpu=True),
+    threads: _threads("train")
+    resources:
+        **_resources("train", gpu=True),
+    shell:
+        "{params.gpu_sampler}{params.docker}{params.apptainer} mytool train ..."
+```
+
+On CoreHPC Slurm this routes the job to the GPU partition with `--gres` and adds
+`--nv` to Apptainer. The GPU partition / gres come from the `gpu:` block in
+`config.yaml` (defaults: `small_gpu` / `gpu:nvidia_l40s:1`). The Slurm profile
+caps concurrent GPU jobs at 1 (CoreHPC's per-user limit) — raise it with
+`--resources max_concurrent_gpu_jobs=N`. Don't add `--gres` via `slurm_extra`;
+it deadlocks the scheduler (see the slurm README).
 
 ## Adding a new rule
 
-1. Create `workflow/rules/<name>.smk` with your rule definition. Use `docker_run()` and `get_container_path()` from `common.smk` so it runs in all modes.
-2. Add `include: "rules/<name>.smk"` to `workflow/Snakefile`.
-3. Expand the `rule all` inputs to cover the new outputs.
-4. If it needs custom resources on SGE, add a block under `set-resources:` in `workflow/profiles/sge/config.yaml`.
+(Wiring in existing scripts with a coding agent? See [`../AGENTS.md`](../AGENTS.md) for the
+full procedure and the questions to answer first.)
+
+1. Create `workflow/rules/<name>.smk`. Give it `params.docker = docker_run("<image>")` and `params.apptainer = apptainer_run("<image>", gpu=...)`, `threads: _threads("<name>")`, and `resources: **_resources("<name>", gpu=...)`. Copy `hello.smk`'s shape.
+2. Add a `<name>:` entry under `resources:` in `workflow/config/config.yaml` (`threads`, `mem_gb`, `runtime_min`, optional `scratch_gb`). `_resources()`/`_threads()` read it for every scheduler.
+3. Add `include: "rules/<name>.smk"` to `workflow/Snakefile` and expand `rule all` to cover the new outputs.
+4. For on-cluster tuning that must differ from the config defaults, add a block under the commented `set-resources:` in the relevant profile.
 
 ## Adding a new container
 
@@ -97,18 +159,20 @@ See [`../workflow/profiles/slurm/README.md`](../workflow/profiles/slurm/README.m
 workflow/
 ├── Snakefile                 # orchestration; onstart/onsuccess/onerror hooks
 ├── rules/
-│   ├── common.smk            # sample loader, container helpers, notifications
-│   └── hello.smk             # example rule
+│   ├── common.smk            # sample loader, docker_run/apptainer_run, _resources, notifications
+│   └── hello.smk             # example rule (copy its shape for new rules)
 ├── config/
-│   ├── config.yaml           # production
-│   ├── test_config.yaml      # local Docker
-│   ├── test_config_apptainer.yaml
-│   └── config_wynton.yaml.example
+│   ├── config.yaml                    # production (resources: + gpu: blocks)
+│   ├── test_config.yaml               # local Docker
+│   ├── test_config_apptainer.yaml     # overlay for local/SGE Apptainer
+│   ├── test_config_apptainer_slurm.yaml  # overlay for CoreHPC Slurm
+│   ├── config_wynton.yaml.example     # Wynton SGE production
+│   └── config_corehpc.yaml.example    # CoreHPC Slurm production
 ├── profiles/
 │   ├── local/                # Docker executor
 │   ├── apptainer-dev/        # Apptainer on a dev node
 │   ├── sge/                  # Wynton SGE (working)
-│   └── slurm/                # CoreHPC Slurm (stub)
+│   └── slurm/                # CoreHPC Slurm (working, GPU)
 ├── containers/
 │   └── hello/                # Dockerfile + build.sh
 └── test_pipeline.sh          # entry-point CLI

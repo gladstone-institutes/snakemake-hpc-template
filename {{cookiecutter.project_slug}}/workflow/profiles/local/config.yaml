@@ -9,11 +9,13 @@ default-resources:
   mem_free: "2G"
   threads: 1
 
-# Per-rule resource overrides. Add blocks here as you add rules.
-set-resources:
-  hello:
-    mem_free: "512M"
-    threads: 1
+# Rules own their resources via _resources()/_threads() in common.smk (from
+# config["resources"][rule]). This profile sets no `config: scheduler`, so
+# _resources() emits nothing and these default-resources apply. Uncomment
+# per-rule overrides here only if a local laptop differs from the rule defaults.
+# set-resources:
+#   heavy_rule:
+#     mem_free: "4G"
 
 jobs: 1
 latency-wait: 30

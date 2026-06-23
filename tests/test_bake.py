@@ -3,6 +3,7 @@ from pathlib import Path
 
 EXPECTED = [
     "README.md",
+    "AGENTS.md",
     "docs/PIPELINE.md",
     "pyproject.toml",
     ".gitignore",
@@ -14,7 +15,9 @@ EXPECTED = [
     "workflow/config/config.yaml",
     "workflow/config/test_config.yaml",
     "workflow/config/test_config_apptainer.yaml",
+    "workflow/config/test_config_apptainer_slurm.yaml",
     "workflow/config/config_wynton.yaml.example",
+    "workflow/config/config_corehpc.yaml.example",
     "workflow/config/samples.tsv",
     "workflow/config/test_samples.tsv",
     "workflow/profiles/local/config.yaml",

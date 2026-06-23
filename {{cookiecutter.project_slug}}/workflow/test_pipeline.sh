@@ -19,6 +19,8 @@ LOCAL_PROFILE="workflow/profiles/local"
 APPTAINER_CONFIG="workflow/config/test_config_apptainer.yaml"
 APPTAINER_DEV_PROFILE="workflow/profiles/apptainer-dev"
 SGE_PROFILE="workflow/profiles/sge"
+SLURM_CONFIG="workflow/config/test_config_apptainer_slurm.yaml"
+SLURM_PROFILE="workflow/profiles/slurm"
 CONTAINERS_DIR="workflow/containers"
 
 cd "$PROJECT_DIR"
@@ -51,6 +53,8 @@ Commands:
   run-apptainer        Execute the pipeline (local Apptainer)
   dry-run-sge          Dry-run with SGE cluster profile
   run-sge              Execute the pipeline (SGE cluster)
+  dry-run-slurm        Dry-run with Slurm (CoreHPC) cluster profile
+  run-slurm            Execute the pipeline (Slurm / CoreHPC cluster)
   build [image] [flags] Build every Dockerfile under workflow/containers/
                           (optionally only <image>); flags like --push and
                           --no-cache forward to each build.sh.
@@ -69,7 +73,7 @@ cmd="${1:-dry-run}"
 shift || true
 
 case "$cmd" in
-    dry-run|run|run-apptainer|dry-run-sge|run-sge|dag|lint|list-samples)
+    dry-run|run|run-apptainer|dry-run-sge|run-sge|dry-run-slurm|run-slurm|dag|lint|list-samples)
         require snakemake "Run 'uv sync && source .venv/bin/activate' first."
         ;;
 esac
@@ -89,9 +93,9 @@ case "$cmd" in
     run-apptainer)
         require apptainer
         echo "Running pipeline with Apptainer containers..."
-        banner "$TEST_CONFIG + $APPTAINER_CONFIG" "$APPTAINER_DEV_PROFILE --sdm apptainer"
+        banner "$TEST_CONFIG + $APPTAINER_CONFIG" "$APPTAINER_DEV_PROFILE"
         sm --configfile "$TEST_CONFIG" "$APPTAINER_CONFIG" \
-            --profile "$APPTAINER_DEV_PROFILE" --sdm apptainer "$@"
+            --profile "$APPTAINER_DEV_PROFILE" "$@"
         ;;
 
     dry-run-sge)
@@ -108,6 +112,20 @@ case "$cmd" in
         mkdir -p logs
         sm --configfile "$TEST_CONFIG" "$APPTAINER_CONFIG" \
             --profile "$SGE_PROFILE" "$@"
+        ;;
+
+    dry-run-slurm)
+        echo "Dry-run with Slurm profile (validates DAG + cluster config)..."
+        sm --configfile "$TEST_CONFIG" "$SLURM_CONFIG" \
+            --profile "$SLURM_PROFILE" --dry-run --printshellcmds "$@"
+        ;;
+
+    run-slurm)
+        require sbatch "Must run on a Slurm cluster (e.g. UCSF CoreHPC)."
+        echo "Running pipeline on Slurm cluster..."
+        banner "$TEST_CONFIG + $SLURM_CONFIG" "$SLURM_PROFILE"
+        sm --configfile "$TEST_CONFIG" "$SLURM_CONFIG" \
+            --profile "$SLURM_PROFILE" "$@"
         ;;
 
     build)
