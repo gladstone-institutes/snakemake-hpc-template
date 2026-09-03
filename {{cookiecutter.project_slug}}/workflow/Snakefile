@@ -4,11 +4,16 @@
 #   # Local testing with Docker
 #   snakemake --configfile workflow/config/test_config.yaml --profile workflow/profiles/local
 #
-#   # Production run on Wynton SGE
-#   snakemake --configfile workflow/config/config.yaml --profile workflow/profiles/sge
+#   # Production run on UCSF CoreHPC (Slurm) -- see workflow/launch.sh for
+#   # long runs, which must not be driven from a login shell
+#   snakemake --configfile workflow/config/config_corehpc.yaml --profile workflow/profiles/slurm
+#
+#   # Wynton SGE (DEPRECATED, unmaintained; still works)
+#   snakemake --configfile workflow/config/config_wynton.yaml --profile workflow/profiles/sge
 #
 # See README.md for the full guide.
 
+import re
 from pathlib import Path
 
 
@@ -16,10 +21,18 @@ configfile: "workflow/config/config.yaml"
 
 
 include: "rules/common.smk"
+include: "rules/containers.smk"
 include: "rules/hello.smk"
 
 
-localrules: list_samples
+localrules: list_samples, pull_container
+
+
+# Pin both wildcards: they sit adjacent in every path, so an unconstrained
+# {output_dir} lets backtracking split a path the wrong way.
+wildcard_constraints:
+    output_dir=re.escape(config["output_dir"]),
+    sample="|".join(re.escape(s) for s in get_all_samples()),
 
 
 rule all:
@@ -68,6 +81,13 @@ onsuccess:
     import socket
     from datetime import timedelta
 
+    def _num(value):
+        # Unsampled benchmark fields are the literal string "NA".
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
+
     benchmarks_dir = Path(config["output_dir"]) / "benchmarks"
     rows = []
     if benchmarks_dir.exists():
@@ -77,10 +97,13 @@ onsuccess:
                 for row in reader:
                     sample = tsv.parent.name if tsv.parent != benchmarks_dir else "-"
                     rule_name = tsv.stem
-                    wall_s = float(row["s"])
-                    max_rss = float(row.get("max_rss", 0))
-                    cpu_time = float(row.get("cpu_time", 0))
-                    rows.append((sample, rule_name, wall_s, max_rss, cpu_time))
+                    rows.append((
+                        sample,
+                        rule_name,
+                        _num(row.get("s")),
+                        _num(row.get("max_rss")),
+                        _num(row.get("cpu_time")),
+                    ))
 
     if rows:
         total_s = sum(r[2] for r in rows)
@@ -104,6 +127,7 @@ onsuccess:
         f"Output: {config['output_dir']}",
         f"Samples: {', '.join(get_all_samples())}",
     ]
+    write_status("SUCCESS", "\n".join(body_lines))
     send_notification(
         f"[{{ cookiecutter.project_slug }}] Pipeline completed successfully",
         "\n".join(body_lines),
@@ -122,6 +146,7 @@ onerror:
         "Check the Snakemake log for the failed rule and error details.",
         "Re-run the same command to resume from the failed step.",
     ]
+    write_status("FAILED", "\n".join(body_lines))
     send_notification(
         f"[{{ cookiecutter.project_slug }}] Pipeline FAILED",
         "\n".join(body_lines),

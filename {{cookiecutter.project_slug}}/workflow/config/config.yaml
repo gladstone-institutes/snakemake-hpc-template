@@ -12,16 +12,27 @@ samples: "workflow/config/samples.tsv"
 # Per-rule compute resources. Canonical units: total memory in GB, total
 # runtime in minutes, thread count. workflow/rules/common.smk:_resources()
 # translates these to scheduler-specific keys per the active profile:
-#   SGE   -> mem_free (per-slot), scratch, h_rt (HH:MM:SS), gpu
 #   Slurm -> mem_mb (total), runtime (minutes), gres (for --gres on GPU rules)
+#   SGE   -> mem_free (per-slot), scratch, h_rt (HH:MM:SS), gpu   [deprecated]
 # Every rule needs an entry here. Cluster configs (config_<cluster>.yaml) can
 # override individual keys by adding a resources: block with just what changes.
+#
+# These start as guesses. After a run, replace them with observations:
+#   uv run python workflow/scripts/calibrate_resources.py --output_dir <output_dir>
 resources:
   hello:
     threads: 1
     mem_gb: 1
     runtime_min: 10
-    # scratch_gb: 1   # SGE only
+    # scratch_gb: 1   # SGE only (deprecated path)
+    # Opt-in size-aware runtime (see _runtime_min_scaled in rules/common.smk).
+    # With these set, runtime_min is the cap: use the partition MaxTime.
+    # runtime_base_min: 60
+    # runtime_per_size_min: 30
+
+# Largest node in the partition (`sinfo -o "%P %m" | sort -u`), in GB. Caps a
+# retried job's memory: an unsatisfiable request pends forever, it never fails.
+max_node_mem_gb: 1500
 
 # GPU settings (used only when a rule passes gpu=True to the helpers). Defaults
 # target UCSF CoreHPC L40s nodes; see workflow/profiles/slurm/README.md.
@@ -31,9 +42,10 @@ gpu:
   slurm_gres: "gpu:nvidia_l40s:1"
   # Interval (seconds) for the optional nvidia-smi utilization sampler.
   sampler_interval_s: 5
-  # sge_gpu_mem: "8G"   # SGE gpu.q only (requires extending the sge submit-cmd)
+  # sge_gpu_mem: "8G"   # SGE gpu.q only, deprecated (needs a sge submit-cmd edit)
 
-# Email notification (optional). Requires 'mail' or 'sendmail' on the host.
+# Email notification (optional). Needs 'mail'/'sendmail', so it is a no-op on
+# CoreHPC: launch.sh hands this address to sbatch --mail-user instead.
 notification:
   email: "{{ cookiecutter.notification_email }}"
 

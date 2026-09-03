@@ -1,32 +1,25 @@
-# Hello-world example rule.
+# Hello-world example rule -- the shape every rule copies. See AGENTS.md.
 #
-# Demonstrates the shape every rule in this template follows:
-#   1. params.docker     = docker_run("<image>")             — `docker run ...`
-#      prefix in local Docker mode, "" otherwise.
-#   2. params.apptainer  = apptainer_run("<image>", gpu=...) — `apptainer exec
-#      ...` prefix in Apptainer/HPC mode, "" otherwise. Exactly one of docker /
-#      apptainer expands per run mode; in host mode both are "".
-#   3. threads:   _threads("<rule>")          — from config["resources"][rule].
-#      resources: **_resources("<rule>", gpu) — translated to SGE/Slurm keys by
-#      the active profile's scheduler. Every rule needs a config["resources"]
-#      entry (see workflow/config/config.yaml).
-#   4. {output.<name>} / {wildcards.<name>} templating in the shell block.
+#   1. params.docker / params.apptainer: container prefixes from common.smk.
+#      Exactly one expands per run mode; both are "" in host mode.
+#   2. input.script = script_path(...): declared as an input so script edits
+#      rerun the rule. Snakemake's `code` trigger does not track it otherwise.
+#   3. threads/resources from config["resources"][rule]; a missing entry is a
+#      KeyError at parse.
+#   4. log: written with `... 2>&1 | tee {log}`. NOTE tee truncates and the path
+#      has no attempt number, so it holds only the last run of the job.
 #
 # GPU rules (CoreHPC Slurm): pass gpu=True to BOTH apptainer_run and _resources,
-# and optionally prepend gpu_sampler_prefix(...) to log nvidia-smi utilization:
+# and optionally prepend gpu_sampler_prefix(...) for nvidia-smi logging:
 #
 #   params:
-#       docker=docker_run("mytool"),
 #       apptainer=apptainer_run("mytool", gpu=True),
 #       gpu_sampler=lambda w, output: gpu_sampler_prefix(
 #           Path(output.result).parent, "mygpurule", gpu=True),
 #   resources:
 #       **_resources("mygpurule", gpu=True),
-#   shell:
-#       "{params.gpu_sampler}{params.docker}{params.apptainer} mytool ..."
 #
-# Replace this file with your real rules and remove `include: "rules/hello.smk"`
-# from workflow/Snakefile.
+# Replace this file with your real rules and drop its include: from the Snakefile.
 
 
 def _hello_message(wildcards):
@@ -35,6 +28,8 @@ def _hello_message(wildcards):
 
 rule hello:
     """Write a per-sample greeting drawn from the samples TSV."""
+    input:
+        script=script_path("hello.sh"),
     output:
         greeting="{output_dir}/{sample}/hello.txt",
     params:
@@ -46,5 +41,8 @@ rule hello:
         **_resources("hello", gpu=False),
     benchmark:
         "{output_dir}/benchmarks/{sample}/hello.tsv"
+    log:
+        "{output_dir}/logs/hello/{sample}.log",
     shell:
-        "{params.docker}{params.apptainer} sh -c 'echo \"Sample {wildcards.sample} says: {params.message}\" > {output.greeting}'"
+        "{params.docker}{params.apptainer} bash {input.script} "
+        "{wildcards.sample} '{params.message}' {output.greeting} 2>&1 | tee {log}"

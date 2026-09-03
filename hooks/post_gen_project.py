@@ -8,6 +8,10 @@ project_root = Path.cwd()
 
 SCRIPT_PATHS = [
     "workflow/test_pipeline.sh",
+    "workflow/launch.sh",
+    "workflow/scripts/hello.sh",
+    "workflow/scripts/calibrate_resources.py",
+    "workflow/scripts/resolve_sifs.py",
     "workflow/profiles/sge/status.sh",
     "workflow/containers/hello/build.sh",
 ]

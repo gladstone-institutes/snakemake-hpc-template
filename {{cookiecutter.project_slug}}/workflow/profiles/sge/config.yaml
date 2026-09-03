@@ -1,3 +1,8 @@
+# DEPRECATED: Wynton / SGE support is no longer maintained. It is kept because
+# it still works and existing pipelines depend on it, but CoreHPC Slurm
+# (workflow/profiles/slurm/) is the supported cluster path -- new work, bug
+# fixes and validation go there. Expect no updates here.
+#
 # SGE cluster profile. Tested on UCSF Wynton; generic enough for other SGE
 # sites with one env-var override (see status.sh).
 #

@@ -47,7 +47,12 @@ default-resources:
 # config var read by common.smk, not Snakemake's --scheduler option.
 scheduler: greedy
 
+# Raise to at least the widest fan-out you want running at once.
 jobs: 50
+# Thread budget; must exceed jobs * (fattest rule's threads) or it throttles.
+cores: 4096
+# Per-job mail is deliberately unset: it would send one message per step job.
+# launch.sh puts --mail-type on the DRIVER job instead (see this dir's README).
 latency-wait: 60
 max-jobs-per-second: 5
 max-status-checks-per-second: 2

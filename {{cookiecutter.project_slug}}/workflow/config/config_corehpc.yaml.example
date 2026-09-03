@@ -1,12 +1,14 @@
 # {{ cookiecutter.project_name }} - UCSF CoreHPC (Slurm) production config.
 #
-# Run on the cluster:
+# Run on the cluster (see workflow/launch.sh -- do NOT run a long snakemake
+# from the login shell; CoreHPC reaps your processes when the SSH session drops):
+#   ./workflow/launch.sh all check      # dry-run, submit nothing
+#   ./workflow/launch.sh all            # pre-pull images + submit the driver job
+#
+# Or directly, for short runs:
 #   snakemake --snakefile workflow/Snakefile \
 #       --configfile workflow/config/config_corehpc.yaml \
 #       --profile workflow/profiles/slurm --dry-run     # confirm DAG first
-#   snakemake --snakefile workflow/Snakefile \
-#       --configfile workflow/config/config_corehpc.yaml \
-#       --profile workflow/profiles/slurm               # run live
 #
 # This file only OVERRIDES paths; everything else (resources:, gpu:, images:)
 # is inherited from workflow/config/config.yaml. GPU routing (partition + gres)
@@ -34,7 +36,9 @@ samples: "workflow/config/samples.tsv"
 containers:
   # Directory of pre-pulled .sif files. Shared across runs/users if you want.
   dir: "/mnt/gladstone/bioinformatics/projects/{{ cookiecutter.project_slug }}/containers"
-  auto_pull: true
+  # false: compute nodes have no outbound internet. Pull on the login node with
+  # `./workflow/launch.sh <scope> prepull`.
+  auto_pull: false
   # Paths to bind into Apptainer containers. /mnt/scratch is shared scratch on
   # CoreHPC compute nodes and is required for GPU jobs (tempfiles, matplotlib
   # font cache, pyarrow spill must reach a path inside the container).

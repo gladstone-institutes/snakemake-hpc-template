@@ -1,4 +1,9 @@
 #!/bin/bash
+# DEPRECATED: Wynton / SGE support is no longer maintained. It is kept because
+# it still works and existing pipelines depend on it, but CoreHPC Slurm
+# (workflow/profiles/slurm/) is the supported cluster path -- new work, bug
+# fixes and validation go there. Expect no updates here.
+#
 # SGE job status check for Snakemake's cluster-generic executor.
 #
 # Why this exists: the obvious `qstat -j <id>` check can only say "is this job

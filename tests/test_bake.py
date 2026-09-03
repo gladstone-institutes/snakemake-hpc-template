@@ -11,7 +11,12 @@ EXPECTED = [
     "workflow/Snakefile",
     "workflow/test_pipeline.sh",
     "workflow/rules/common.smk",
+    "workflow/rules/containers.smk",
     "workflow/rules/hello.smk",
+    "workflow/launch.sh",
+    "workflow/scripts/hello.sh",
+    "workflow/scripts/calibrate_resources.py",
+    "workflow/scripts/resolve_sifs.py",
     "workflow/config/config.yaml",
     "workflow/config/test_config.yaml",
     "workflow/config/test_config_apptainer.yaml",
@@ -48,6 +53,8 @@ def test_scripts_are_executable(cookies):
     project = Path(result.project_path)
     for rel in (
         "workflow/test_pipeline.sh",
+        "workflow/launch.sh",
+        "workflow/scripts/hello.sh",
         "workflow/profiles/sge/status.sh",
         "workflow/containers/hello/build.sh",
     ):

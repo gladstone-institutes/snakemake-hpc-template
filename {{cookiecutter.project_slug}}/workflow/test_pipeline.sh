@@ -36,6 +36,14 @@ banner() {
     echo ""
 }
 
+# Wynton / SGE is unmaintained. The commands still work; they just say so once.
+deprecated_sge() {
+    echo "WARNING: Wynton / SGE support is DEPRECATED and unmaintained." >&2
+    echo "         CoreHPC Slurm (dry-run-slurm / run-slurm, workflow/launch.sh) is" >&2
+    echo "         the supported cluster path. This still runs, but gets no updates." >&2
+    echo "" >&2
+}
+
 require() {
     command -v "$1" &>/dev/null && return
     echo "Error: $1 not found." >&2
@@ -51,10 +59,14 @@ Commands:
   dry-run              Snakemake dry-run (default)
   run                  Execute the pipeline (local Docker)
   run-apptainer        Execute the pipeline (local Apptainer)
-  dry-run-sge          Dry-run with SGE cluster profile
-  run-sge              Execute the pipeline (SGE cluster)
   dry-run-slurm        Dry-run with Slurm (CoreHPC) cluster profile
   run-slurm            Execute the pipeline (Slurm / CoreHPC cluster)
+  dry-run-sge          Dry-run with SGE cluster profile      [DEPRECATED]
+  run-sge              Execute the pipeline (SGE cluster)    [DEPRECATED]
+  prepull [cfg...]     Pull every configured image to a .sif on THIS host
+                          (run it on a login node: cluster compute nodes have no
+                          outbound internet). Defaults to the Apptainer test
+                          configs; pass config paths for a real cluster run.
   build [image] [flags] Build every Dockerfile under workflow/containers/
                           (optionally only <image>); flags like --push and
                           --no-cache forward to each build.sh.
@@ -73,7 +85,7 @@ cmd="${1:-dry-run}"
 shift || true
 
 case "$cmd" in
-    dry-run|run|run-apptainer|dry-run-sge|run-sge|dry-run-slurm|run-slurm|dag|lint|list-samples)
+    dry-run|run|run-apptainer|dry-run-sge|run-sge|dry-run-slurm|run-slurm|dag|lint|list-samples|prepull)
         require snakemake "Run 'uv sync && source .venv/bin/activate' first."
         ;;
 esac
@@ -99,12 +111,14 @@ case "$cmd" in
         ;;
 
     dry-run-sge)
+        deprecated_sge
         echo "Dry-run with SGE profile (validates DAG + cluster config)..."
         sm --configfile "$TEST_CONFIG" "$APPTAINER_CONFIG" \
             --profile "$SGE_PROFILE" --dry-run --printshellcmds "$@"
         ;;
 
     run-sge)
+        deprecated_sge
         require qsub "Must run on an SGE cluster."
         echo "Running pipeline on SGE cluster..."
         banner "$TEST_CONFIG + $APPTAINER_CONFIG" "$SGE_PROFILE"
@@ -126,6 +140,27 @@ case "$cmd" in
         banner "$TEST_CONFIG + $SLURM_CONFIG" "$SLURM_PROFILE"
         sm --configfile "$TEST_CONFIG" "$SLURM_CONFIG" \
             --profile "$SLURM_PROFILE" "$@"
+        ;;
+
+    prepull)
+        # Pre-pull .sif files via the pull_container localrule, on whatever host
+        # this runs from. Cluster compute nodes typically have no outbound
+        # internet, so the Snakefile's onstart auto-pull cannot reach a registry
+        # from inside a submitted job -- and in the driver-job pattern
+        # (workflow/launch.sh) snakemake itself runs on a compute node.
+        # Idempotent: snakemake skips images whose .sif already exists.
+        require apptainer
+        if [[ $# -gt 0 ]]; then
+            PREPULL_CONFIGS=("$@")
+        else
+            PREPULL_CONFIGS=("$TEST_CONFIG" "$APPTAINER_CONFIG")
+        fi
+        SIFS=()
+        while IFS= read -r line; do
+            [[ -n "$line" ]] && SIFS+=("$line")
+        done < <(python "$SCRIPT_DIR/scripts/resolve_sifs.py" "${PREPULL_CONFIGS[@]}")
+        echo "Pulling on $(hostname): ${SIFS[*]}"
+        sm --configfile "${PREPULL_CONFIGS[@]}" --cores 1 "${SIFS[@]}"
         ;;
 
     build)

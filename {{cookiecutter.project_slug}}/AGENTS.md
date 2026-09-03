@@ -18,15 +18,26 @@ This pipeline has a few deliberate conventions you must follow:
 - **Resources are config-driven.** Every rule needs an entry under `resources:` in
   `workflow/config/config.yaml` (`threads` / `mem_gb` / `runtime_min`, optional
   `scratch_gb`). `_threads("rule")` and `_resources("rule", gpu=...)` translate these to
-  SGE / Slurm keys based on the active profile. A missing entry is a `KeyError` at parse.
+  Slurm (or deprecated SGE) keys based on the active profile. A missing entry is a
+  `KeyError` at parse.
 - **One Snakefile, four modes.** The same rules run as local Docker, local Apptainer,
-  Wynton SGE, and CoreHPC Slurm (+ GPU). You write a rule once; the profile + config
-  pick the mode. Don't special-case modes inside a rule.
-- **Scripts live in `workflow/scripts/`** and are invoked from a rule's `shell:`.
+  CoreHPC Slurm (+ GPU), and deprecated Wynton SGE. You write a rule once; the profile +
+  config pick the mode. Don't special-case modes inside a rule. **CoreHPC Slurm is the
+  supported cluster path**; target it unless the user says they are on Wynton.
+- **Scripts live in `workflow/scripts/`** and are invoked from a rule's `shell:` —
+  **declared as an `input:`** via `script=script_path("my_step.R")` and called as
+  `{input.script}`. Snakemake's `code` rerun trigger only tracks the rule's own shell
+  directive, not the external file it calls, so without this an edited script silently
+  reuses stale outputs.
+- **Every rule writes a persistent log**, `{output_dir}/logs/{rule}/{wildcards}.log`, via
+  `... 2>&1 | tee {log}`. The scheduler's own job logs are transient (the Slurm executor
+  deletes them on success); this is the record that survives. `set -euo pipefail` is
+  Snakemake's default shell, so a failing script still fails the job through the pipe.
 
 The helpers above all live in `workflow/rules/common.smk`
-(`docker_run`, `apptainer_run`, `_threads`, `_resources`, `gpu_sampler_prefix`,
-`load_samples`, `get_all_samples`).
+(`docker_run`, `apptainer_run`, `script_path`, `_threads`, `_resources`,
+`_resources_sized`, `_runtime_min_scaled`, `gpu_sampler_prefix`, `load_samples`,
+`get_all_samples`).
 
 ## Gather these from the user first
 
@@ -57,9 +68,9 @@ to add, get answers to the following. The right-hand side is what each answer de
 - **Hardcoded assumptions** - absolute paths, reliance on a specific working directory,
   hardcoded output names baked into the script -> these must be parameterized to take
   arguments so the rule controls them.
-- **Target environment** - laptop Docker, Wynton SGE, CoreHPC Slurm, GPU? -> which
-  profile, and whether the image must be pushed to a registry first (required before any
-  HPC run, since Apptainer pulls the `.sif` from there).
+- **Target environment** - laptop Docker, CoreHPC Slurm, GPU (or deprecated Wynton
+  SGE)? -> which profile, and whether the image must be pushed to a registry first
+  (required before any HPC run, since Apptainer pulls the `.sif` from there).
 
 If the user can't answer some of these, ask narrowing questions or inspect the script,
 but do not guess inputs / outputs or resources silently. State assumptions you make.
@@ -82,6 +93,7 @@ but do not guess inputs / outputs or resources silently. State assumptions you m
    rule my_step:
        input:
            data="{output_dir}/{sample}/upstream.tsv",   # or raw input paths
+           script=script_path("my_step.R"),             # so script edits rerun the rule
        output:
            result="{output_dir}/{sample}/my_step.tsv",
        params:
@@ -92,8 +104,11 @@ but do not guess inputs / outputs or resources silently. State assumptions you m
            **_resources("my_step", gpu=False),
        benchmark:
            "{output_dir}/benchmarks/{sample}/my_step.tsv"
+       log:
+           "{output_dir}/logs/my_step/{sample}.log",
        shell:
-           "{params.docker}{params.apptainer} Rscript workflow/scripts/my_step.R {input.data} {output.result}"
+           "{params.docker}{params.apptainer} Rscript {input.script} "
+           "{input.data} {output.result} 2>&1 | tee {log}"
    ```
    The interpreter call goes **inside** `shell:` so the container prefix wraps it.
 5. **Add the resources entry** under `resources:` in `config.yaml`
@@ -103,9 +118,9 @@ but do not guess inputs / outputs or resources silently. State assumptions you m
 7. **Add any per-sample columns** to `samples.tsv` and read them in the rule with a small
    input function: `samples.loc[wildcards.sample, "<col>"]` (see `_hello_message` in
    `hello.smk`). Add any global params to `config.yaml` and read via `config[...]`.
-8. **Remove the hello example** once real rules exist: delete `rules/hello.smk`, its
-   `include:`, the `hello` entry under `resources:`, the `hello` container, and the
-   `message` column if no rule uses it.
+8. **Remove the hello example** once real rules exist: delete `rules/hello.smk`,
+   `workflow/scripts/hello.sh`, its `include:`, the `hello` entry under `resources:`, the
+   `hello` container, and the `message` column if no rule uses it.
 
 ## Conventions and gotchas
 
@@ -117,7 +132,31 @@ but do not guess inputs / outputs or resources silently. State assumptions you m
   execute on the host and bypass `docker_run` / `apptainer_run`. Wrap the interpreter in
   `shell:` instead.
 - **Every rule needs a `config["resources"]` entry**, or `_threads` / `_resources` raise
-  `KeyError`.
+  `KeyError`. The initial numbers are guesses; after a run, replace them with what the
+  `benchmark:` files measured:
+  `uv run python workflow/scripts/calibrate_resources.py --output_dir <output_dir>`.
+- **Size-aware runtime** for a rule whose wall time scales with a per-sample quantity:
+  add `runtime_base_min` / `runtime_per_size_min` to its config entry and use
+  ```python
+   resources:
+       **_resources_sized("my_step"),
+       runtime=lambda wildcards: _runtime_min_scaled("my_step", wildcards.sample),
+  ```
+  `runtime_min` then acts as the CAP — set it to the partition MaxTime, because a Slurm
+  request above MaxTime is accepted and then pends forever as `(PartitionTimeLimit)`
+  rather than erroring.
+- **Expose size/count thresholds as config, don't hardcode them.** A threshold tuned for
+  production (minimum donors, minimum group size, a k grid) makes a small test fixture
+  cover *nothing* while still reporting success — or, worse, errors on an empty
+  intermediate far downstream. Put the threshold in `config.yaml`, shrink it in the test
+  config, and make the consumer tolerate the empty result. Fix the class of problem, not
+  the one instance that broke.
+- **Read a sample sheet via `params:`, never declare it as an `input:`.** As an input, any
+  `git pull` that bumps its mtime reruns every rule that depends on it, forever.
+- **Anything a tool writes that you did not declare as an output is never cleaned up** by
+  Snakemake — cache and checkpoint directories especially. If the tool then refuses to
+  reuse a checkpoint written under a different configuration, that guard is correct: delete
+  the stale directory by hand rather than working around it.
 - **Declare every output** the script writes; Snakemake only tracks declared outputs and
   removes them on failure to keep state consistent.
 - Use `{wildcards.sample}` for per-sample paths. An **aggregate** rule takes a list input
@@ -131,7 +170,17 @@ but do not guess inputs / outputs or resources silently. State assumptions you m
   `gpu_sampler_prefix(...)` to log nvidia-smi utilization. See the GPU recipe in
   `hello.smk`'s header comment and `workflow/profiles/slurm/README.md`.
 - Bump the image `tag:` in `config.yaml` whenever you bump the Dockerfile `LABEL version`,
-  or the pipeline silently runs the old image.
+  or the pipeline silently runs the old image. After `build.sh --push`, **verify the tag
+  actually landed on the registry** (`docker manifest inspect <user>/<img>:<tag>`) — a
+  cluster run pulls from there, and a missing tag surfaces as a confusing pull failure
+  hours later.
+- **End every Dockerfile with a verification `RUN`** that imports/loads each package the
+  rules need (and asserts the base image version, if you build `FROM` your own image).
+  A failed install otherwise ships silently and fails inside a cluster job instead.
+- **Pre-pull images before a cluster run**: `uv run ./workflow/test_pipeline.sh prepull`
+  (or `./workflow/launch.sh <scope> prepull`) on the login node. Compute nodes usually
+  have no outbound internet, so the `onstart` auto-pull cannot reach the registry from a
+  submitted job.
 
 ## Verify your work
 
@@ -143,7 +192,14 @@ uv run ./workflow/test_pipeline.sh run        # end-to-end, if Docker is availab
 
 Outputs land under `.tests/integration/results/<sample>/`. Adjust
 `workflow/config/test_samples.tsv` to exercise your rule. Before any real cluster submit,
-run `dry-run-sge` or `dry-run-slurm` to confirm the DAG and resource translation.
+run `dry-run-slurm` (or `dry-run-sge` on the deprecated Wynton path) to confirm the DAG
+and resource translation.
+
+Once the pipeline has real steps, add a third tier between `dry-run` (no data) and a
+production run: a **smoke config** (`workflow/config/smoke_config.yaml`) that runs the
+whole DAG on a tiny committed fixture with every threshold shrunk. A dry-run only proves
+the DAG resolves; the smoke proves the scripts actually run and their outputs chain.
+That is what the config-driven-thresholds rule above is for.
 
 ## Pointers
 
@@ -151,4 +207,7 @@ run `dry-run-sge` or `dry-run-slurm` to confirm the DAG and resource translation
 - `workflow/rules/common.smk` - the helpers every rule uses.
 - `docs/PIPELINE.md` - full operational guide (containers, build / push, clusters, GPU,
   adding rules and containers).
-- `workflow/profiles/slurm/README.md` - CoreHPC Slurm + GPU specifics.
+- `workflow/profiles/slurm/README.md` - CoreHPC Slurm + GPU specifics, the driver-job
+  pattern, and the cluster gotchas that cost real debugging.
+- `workflow/launch.sh` - submit a long cluster run as a Slurm driver job (never run a
+  multi-hour snakemake from a CoreHPC login shell; it is reaped when SSH drops).

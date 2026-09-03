@@ -8,9 +8,15 @@
 #   - docker_run / apptainer_run: dual-mode container entry points. Every rule
 #     prepends BOTH to its shell; exactly one expands to a prefix per run mode
 #     (the other is ""). Snakemake's `container:` directive is NOT used.
+#   - script_path: path to a script under workflow/scripts. Every rule declares
+#     its script as an input so editing the script reruns the rule.
+#   - sif_to_docker_uri: reverse lookup used by the pull_container rule.
 #   - _resources / _threads: translate canonical config["resources"][rule]
 #     (mem_gb / runtime_min / threads) to scheduler-specific keys per profile.
+#   - _resources_sized / _runtime_min_scaled: opt-in size-aware runtime for
+#     rules whose wall time scales with a per-sample column.
 #   - gpu_sampler_prefix: optional nvidia-smi utilization logger for GPU rules.
+#   - write_status: terminal-state file under {output_dir}/logs/status.
 #   - send_notification: opt-in email via mail/sendmail when configured.
 
 import os as _os
@@ -36,14 +42,38 @@ if _bind_paths:
     _os.environ["SINGULARITY_BIND"] = _os.environ["APPTAINER_BIND"]
 
 
+def write_status(state, body=""):
+    """Write {output_dir}/logs/status/<stamp>_<state>.txt + latest.txt.
+
+    The completion signal that works on CoreHPC, which has no MTA. Never raises.
+    """
+    from datetime import datetime, timezone
+
+    try:
+        status_dir = Path(config["output_dir"]) / "logs" / "status"
+        status_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        text = f"{state}\n{stamp}\n\n{body}\n"
+        (status_dir / f"{stamp}_{state}.txt").write_text(text)
+        (status_dir / "latest.txt").write_text(text)
+        print(f"Status written to {status_dir}/latest.txt", file=sys.stderr)
+    except Exception as e:
+        print(f"Warning: could not write status file: {e}", file=sys.stderr)
+
+
 def send_notification(subject, body=""):
-    """Email notification if configured and mail/sendmail is available."""
+    """Email if configured and mail/sendmail exists. No-op on CoreHPC; see the
+    notifications section of workflow/profiles/slurm/README.md."""
     if not NOTIFICATION_EMAIL:
         return
     import shutil, subprocess
     mail_cmd = shutil.which("mail") or shutil.which("sendmail")
     if not mail_cmd:
-        print("Note: notification email configured but no mail command found.", file=sys.stderr)
+        print(
+            "Note: no mail command on this host (expected on CoreHPC); "
+            "status file written instead.",
+            file=sys.stderr,
+        )
         return
     try:
         if "sendmail" in mail_cmd:
@@ -91,6 +121,23 @@ def get_apptainer_path(image_name):
     name = image_config["name"]
     tag = image_config["tag"]
     return f"{container_dir}/{name}_{tag}.sif"
+
+
+def sif_to_docker_uri(sif_basename):
+    """Inverse of get_apptainer_path, for the pull_container rule."""
+    for img in config["containers"]["images"].values():
+        if f'{img["name"]}_{img["tag"]}.sif' == sif_basename:
+            return f'docker://{img["user"]}/{img["name"]}:{img["tag"]}'
+    raise ValueError(
+        f"no configured image matches sif {sif_basename!r}; "
+        f"check containers.images in your config"
+    )
+
+
+def script_path(name):
+    """Path to a script under workflow/scripts, relative so it resolves inside
+    both containers. Declare it as a rule input or script edits won't rerun."""
+    return f"workflow/scripts/{name}"
 
 
 def get_container_path(image_name, use_apptainer=False):
@@ -142,7 +189,8 @@ def apptainer_run(image_name, gpu=False):
         args.append("--nv")
         # GPU device routing depends on the scheduler. The active profile sets
         # config["scheduler"]; we branch:
-        #   - sge: SGE assigns one GPU per gpu.q job and only sets $SGE_GPU.
+        #   - sge (DEPRECATED, unmaintained): SGE assigns one GPU per gpu.q
+        #     job and only sets $SGE_GPU.
         #     Map it manually to CUDA_VISIBLE_DEVICES. The :? form makes bash
         #     exit if $SGE_GPU is unset (e.g. running outside SGE without
         #     a manual override) instead of silently grabbing device 0.
@@ -205,6 +253,21 @@ def _threads(rule_name):
     return int(config["resources"][rule_name]["threads"])
 
 
+def _mem_mb_for_attempt(mem_gb):
+    """mem_mb callable that doubles per retry, capped at max_node_mem_gb.
+
+    A no-op without --retries. The cap matters because an unsatisfiable request
+    pends forever as (Resources) rather than failing.
+    """
+    base_mb = int(mem_gb * 1024)
+    cap_mb = int(config.get("max_node_mem_gb", 1500) * 1024)
+
+    def mem_mb(wildcards, attempt):
+        return min(base_mb * int(attempt), cap_mb)
+
+    return mem_mb
+
+
 def _resources(rule_name, gpu=False):
     """Translate canonical resource fields to scheduler-specific keys.
 
@@ -216,8 +279,10 @@ def _resources(rule_name, gpu=False):
       - runtime_min: total runtime in minutes
 
     Active scheduler from ``config["scheduler"]`` (set by the profile):
-      - "sge":   mem_free (per-slot), scratch, h_rt (HH:MM:SS), gpu (0/1)
       - "slurm": mem_mb (total), runtime (minutes), gres for --gres (GPU)
+      - "sge":   mem_free (per-slot), scratch, h_rt (HH:MM:SS), gpu (0/1).
+                 DEPRECATED -- Wynton/SGE is unmaintained; the branch is kept
+                 because it works, but Slurm is the supported path.
       - else:    no scheduler keys emitted (host/local mode, etc.)
     """
     spec = config["resources"][rule_name]
@@ -237,7 +302,7 @@ def _resources(rule_name, gpu=False):
         out["h_rt"] = f"{h:02d}:{m:02d}:00"
         out["gpu"] = 1 if gpu else 0
     elif scheduler == "slurm":
-        out["mem_mb"] = int(mem_gb * 1024)
+        out["mem_mb"] = _mem_mb_for_attempt(mem_gb)
         out["runtime"] = runtime_min
         # snakemake-slurm auto-maps the rule's `threads:` directive to
         # --cpus-per-task; no need to emit cpus_per_task here.
@@ -262,6 +327,28 @@ def _resources(rule_name, gpu=False):
             # have a higher allowance.
             out["max_concurrent_gpu_jobs"] = 1
     # else: host/local mode / unknown scheduler -- let snakemake's defaults apply.
+    return out
+
+
+def _runtime_min_scaled(rule_name, sample, column="size"):
+    """Opt-in size-aware runtime: runtime_base_min + runtime_per_size_min * n,
+    clamped to runtime_min (set that to the partition MaxTime). Rules without
+    runtime_per_size_min get the flat value. Recipe in AGENTS.md.
+    """
+    spec = config["resources"][rule_name]
+    if "runtime_per_size_min" not in spec:
+        return int(spec["runtime_min"])
+    n = float(samples.loc[sample, column])
+    base = int(spec.get("runtime_base_min", 0))
+    slope = float(spec["runtime_per_size_min"])
+    return min(int(base + slope * n), int(spec["runtime_min"]))
+
+
+def _resources_sized(rule_name, gpu=False):
+    """_resources() minus Slurm's `runtime`, so a rule can pass its own runtime
+    callable without a duplicate-kwarg clash."""
+    out = _resources(rule_name, gpu=gpu)
+    out.pop("runtime", None)
     return out
 
 

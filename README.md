@@ -4,14 +4,14 @@ A cookiecutter template for Snakemake + uv pipelines, built for **UCSF / Gladsto
 
 The same workflow runs four ways:
 
-- **Wynton HPC (SGE)**, with tested defaults for the accounting path, scratch bind, and notification email.
-- **UCSF CoreHPC (Slurm)**, with GPU support and validated defaults (`hpc_core` account, `/mnt/scratch` bind, `small_gpu`/L40s routing).
-- **Local Docker or Apptainer** on a laptop, via one command: `./workflow/test_pipeline.sh run`.
+- **UCSF CoreHPC (Slurm)**, with GPU support and validated defaults (`hpc_core` account, `/mnt/scratch` bind, `small_gpu`/L40s routing). This is the supported cluster path, including a driver-job launcher (`workflow/launch.sh`) for runs too long to drive from a login shell.
+- **Local Docker or HPC Apptainer** on a laptop, via one command: `./workflow/test_pipeline.sh run`.
 - **uv-managed Python**, fast and lock-file-backed.
+- **Wynton HPC (SGE)** — **deprecated and unmaintained.** The profile still works (accounting path, scratch bind, per-slot `mem_free`) and is kept for pipelines already running there, but it gets no further validation or fixes. Don't start new work on it.
 
-You can build container images locally too. `./workflow/test_pipeline.sh build [--push]` wraps every `workflow/containers/*/build.sh`. Build with Docker; Apptainer only *runs* prebuilt images on HPC.
+You can build container images locally too. `./workflow/test_pipeline.sh build [--push]` wraps every `workflow/containers/*/build.sh`. Build with Docker; Apptainer only *runs* prebuilt images on the HPC.
 
-On a different SGE or Slurm cluster? You only need to adjust a few values. The generated project's `docs/PIPELINE.md` and `profiles/*/README.md` list them. Gladstone-specific binds (`/gladstone/bioinformatics` and `/mnt/scratch`) are flagged inline in the `config_*.yaml.example` files.
+On a different Slurm (or SGE) cluster? You only need to adjust a few values. The generated project's `docs/PIPELINE.md` and `profiles/*/README.md` list them. Gladstone-specific binds (`/gladstone/bioinformatics` and `/mnt/scratch`) are flagged inline in the `config_*.yaml.example` files.
 
 ## Quickstart
 
@@ -75,16 +75,19 @@ my-snakemake-pipeline/
 │   ├── Snakefile                 # onstart/onsuccess/onerror hooks wired
 │   ├── rules/
 │   │   ├── common.smk            # sample loader, docker_run/apptainer_run, _resources, notifications
+│   │   ├── containers.smk        # pull_container: pre-pull SIFs on a login node
 │   │   └── hello.smk             # one example rule
 │   ├── config/                   # config.yaml (resources:/gpu:), test_config.yaml, cluster examples
 │   ├── profiles/
 │   │   ├── local/                # Docker executor
 │   │   ├── apptainer-dev/        # Apptainer on a laptop/dev node
-│   │   ├── sge/                  # Wynton SGE (working)
-│   │   └── slurm/                # CoreHPC Slurm (working, GPU)
+│   │   ├── slurm/                # CoreHPC Slurm (supported; GPU validated)
+│   │   └── sge/                  # Wynton SGE (DEPRECATED, unmaintained)
 │   ├── containers/
 │   │   └── hello/                # Dockerfile + build.sh
-│   └── test_pipeline.sh          # dry-run | run | run-apptainer | run-sge | run-slurm | build | ...
+│   ├── scripts/                  # rule scripts + calibrate_resources.py, resolve_sifs.py
+│   ├── launch.sh                 # submit a cluster run as a Slurm driver job
+│   └── test_pipeline.sh          # dry-run | run | run-apptainer | run-slurm | prepull | build | ...
 └── tests/                        # pytest smoke tests
 ```
 
