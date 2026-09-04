@@ -11,10 +11,9 @@ A Snakemake rule is **inputs -> command -> outputs**, parameterized by sample wi
 This pipeline has a few deliberate conventions you must follow:
 
 - **Containers run via shell prefixes, not the `container:` directive.** Every rule
-  prepends `{params.docker}{params.apptainer}` to its `shell:`. `docker_run("img")`
-  expands to a `docker run ...` prefix in local Docker mode (`""` otherwise);
-  `apptainer_run("img", gpu=...)` expands to an `apptainer exec ...` prefix on HPC
-  (`""` otherwise). Exactly one is non-empty per run; in host mode both are `""`.
+  prepends `{params.docker}{params.apptainer}` to its `shell:`. Exactly one expands per
+  run mode (`docker run ...` locally, `apptainer exec ...` on HPC); the other is `""`.
+  The concept is explained in `docs/PIPELINE.md` under "Containers in one minute".
 - **Resources are config-driven.** Every rule needs an entry under `resources:` in
   `workflow/config/config.yaml` (`threads` / `mem_gb` / `runtime_min`, optional
   `scratch_gb`). `_threads("rule")` and `_resources("rule", gpu=...)` translate these to
@@ -80,7 +79,7 @@ but do not guess inputs / outputs or resources silently. State assumptions you m
 1. **Inventory and sketch the DAG.** List the scripts, ask the questions above, and
    write down which outputs feed which so you know the rule chain before writing code.
 2. **Decide the container per tool.** Either reuse a suitable public image, or scaffold a
-   new one: `mkdir workflow/containers/<name>`, add a `Dockerfile` with
+   new one (built with Docker only; see "Why Docker builds" in `docs/PIPELINE.md`): `mkdir workflow/containers/<name>`, add a `Dockerfile` with
    `LABEL version="X.Y.Z"` (the single source of truth for the tag), copy
    `workflow/containers/hello/build.sh` into it and set `IMAGE=`, then register the image
    under `containers.images.<name>` in both `config.yaml` and `test_config.yaml`. The
@@ -209,5 +208,5 @@ That is what the config-driven-thresholds rule above is for.
   adding rules and containers).
 - `workflow/profiles/slurm/README.md` - CoreHPC Slurm + GPU specifics, the driver-job
   pattern, and the cluster gotchas that cost real debugging.
-- `workflow/launch.sh` - submit a long cluster run as a Slurm driver job (never run a
-  multi-hour snakemake from a CoreHPC login shell; it is reaped when SSH drops).
+- `workflow/launch.sh` - submit a cluster run as a Slurm driver job (login shells are
+  reaped when SSH drops; the slurm README explains).

@@ -1,17 +1,22 @@
 # snakemake-hpc-template
 
-A cookiecutter template for Snakemake + uv pipelines, built for **UCSF / Gladstone HPC** users.
+A cookiecutter template for Snakemake + uv pipelines, built for **UCSF / Gladstone HPC**.
+You write each rule once. The same workflow then runs in a container on your laptop or on
+the cluster, and the generated docs explain containers from scratch for people new to them.
 
-The same workflow runs four ways:
+<img src="%7B%7Bcookiecutter.project_slug%7D%7D/docs/containers.svg" alt="Container lifecycle: build with Docker on a laptop, push to a registry, run with Apptainer on the cluster" width="640">
 
-- **UCSF CoreHPC (Slurm)**, with GPU support and validated defaults (`hpc_core` account, `/mnt/scratch` bind, `small_gpu`/L40s routing). This is the supported cluster path, including a driver-job launcher (`workflow/launch.sh`) for runs too long to drive from a login shell.
-- **Local Docker or HPC Apptainer** on a laptop, via one command: `./workflow/test_pipeline.sh run`.
-- **uv-managed Python**, fast and lock-file-backed.
-- **Wynton HPC (SGE)** — **deprecated and unmaintained.** The profile still works (accounting path, scratch bind, per-slot `mem_free`) and is kept for pipelines already running there, but it gets no further validation or fixes. Don't start new work on it.
+| Where | Container runtime | Command |
+|---|---|---|
+| Laptop | Docker | `./workflow/test_pipeline.sh run` |
+| Laptop or dev node | Apptainer | `./workflow/test_pipeline.sh run-apptainer` |
+| **UCSF CoreHPC (Slurm)**, GPU validated | Apptainer | `./workflow/launch.sh all` |
+| Wynton (SGE), **deprecated and unmaintained** | Apptainer | `./workflow/test_pipeline.sh run-sge` |
 
-You can build container images locally too. `./workflow/test_pipeline.sh build [--push]` wraps every `workflow/containers/*/build.sh`. Build with Docker; Apptainer only *runs* prebuilt images on the HPC.
-
-On a different Slurm (or SGE) cluster? You only need to adjust a few values. The generated project's `docs/PIPELINE.md` and `profiles/*/README.md` list them. Gladstone-specific binds (`/gladstone/bioinformatics` and `/mnt/scratch`) are flagged inline in the `config_*.yaml.example` files.
+CoreHPC defaults are validated end to end (`hpc_core` account, `/mnt/scratch` bind,
+`small_gpu` / L40s routing) and include a driver-job launcher for runs too long to drive
+from a login shell. Other Slurm sites adjust a few values listed in the generated
+`docs/PIPELINE.md`.
 
 ## Quickstart
 
@@ -22,7 +27,7 @@ cookiecutter gh:gladstone-institutes/snakemake-hpc-template
 cookiecutter /path/to/snakemake-hpc-template
 ```
 
-Cookiecutter will prompt for seven values:
+Cookiecutter prompts for seven values:
 
 | Variable | Example |
 |---|---|
@@ -34,7 +39,7 @@ Cookiecutter will prompt for seven values:
 | `python_version` | `3.11` |
 | `notification_email` | defaults to `author_email` |
 
-After generation:
+Then:
 
 ```bash
 cd my-snakemake-pipeline
@@ -43,11 +48,12 @@ uv run ./workflow/test_pipeline.sh dry-run    # DAG resolves
 uv run ./workflow/test_pipeline.sh run        # runs the hello-world example in Docker
 ```
 
-`uv run` syncs the environment and runs each command inside the project's `.venv`, so you never need to activate it by hand.
-
 ## Wiring in your own workflow
 
-Once the hello-world example runs, swap it for your real pipeline. The generated project ships an `AGENTS.md` that turns your existing R, Python, or bash scripts into Snakemake rules. It includes the checklist to work through before adding each rule. Point a coding agent (Claude Code, Cursor) at `AGENTS.md`, or follow it yourself.
+Once the hello-world example runs, swap it for your real pipeline. The generated project
+ships an `AGENTS.md` that turns existing R, Python, or bash scripts into rules, with the
+checklist to work through before adding each one. Point a coding agent (Claude Code,
+Cursor) at it, or follow it yourself.
 
 ## Scaffolding into an existing repo
 
@@ -69,26 +75,16 @@ Your existing files are preserved. Everything new lands cleanly, including the d
 
 ```
 my-snakemake-pipeline/
-├── pyproject.toml                # snakemake, pandas, pyarrow, pyyaml + pytest
-├── AGENTS.md                     # guide for coding agents wiring in existing scripts
+├── AGENTS.md                 # guide for wiring existing scripts into rules
+├── docs/PIPELINE.md          # setup, containers, CoreHPC, troubleshooting
 ├── workflow/
-│   ├── Snakefile                 # onstart/onsuccess/onerror hooks wired
-│   ├── rules/
-│   │   ├── common.smk            # sample loader, docker_run/apptainer_run, _resources, notifications
-│   │   ├── containers.smk        # pull_container: pre-pull SIFs on a login node
-│   │   └── hello.smk             # one example rule
-│   ├── config/                   # config.yaml (resources:/gpu:), test_config.yaml, cluster examples
-│   ├── profiles/
-│   │   ├── local/                # Docker executor
-│   │   ├── apptainer-dev/        # Apptainer on a laptop/dev node
-│   │   ├── slurm/                # CoreHPC Slurm (supported; GPU validated)
-│   │   └── sge/                  # Wynton SGE (DEPRECATED, unmaintained)
-│   ├── containers/
-│   │   └── hello/                # Dockerfile + build.sh
-│   ├── scripts/                  # rule scripts + calibrate_resources.py, resolve_sifs.py
-│   ├── launch.sh                 # submit a cluster run as a Slurm driver job
-│   └── test_pipeline.sh          # dry-run | run | run-apptainer | run-slurm | prepull | build | ...
-└── tests/                        # pytest smoke tests
+│   ├── Snakefile, rules/     # one example rule; common.smk holds the helpers
+│   ├── config/               # config.yaml (resources:/gpu:), samples.tsv, cluster examples
+│   ├── profiles/             # local, apptainer-dev, slurm, sge
+│   ├── containers/           # one Dockerfile + build.sh per image
+│   ├── launch.sh             # submit a cluster run as a Slurm driver job
+│   └── test_pipeline.sh      # dry-run | run | run-apptainer | run-slurm | prepull | build
+└── tests/                    # pytest smoke tests
 ```
 
 ## Development

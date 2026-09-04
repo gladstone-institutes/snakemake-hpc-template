@@ -5,6 +5,7 @@ EXPECTED = [
     "README.md",
     "AGENTS.md",
     "docs/PIPELINE.md",
+    "docs/containers.svg",
     "pyproject.toml",
     ".gitignore",
     ".python-version",

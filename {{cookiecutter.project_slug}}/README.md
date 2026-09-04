@@ -2,11 +2,9 @@
 
 A Snakemake pipeline scaffolded from
 [snakemake-hpc-template](https://github.com/gladstone-institutes/snakemake-hpc-template).
-
-Pipeline-specific operational docs (setup, running locally, CoreHPC Slurm with
-GPU, container building, troubleshooting) live in
-[`docs/PIPELINE.md`](docs/PIPELINE.md). A deprecated, unmaintained Wynton SGE
-profile is still included and documented there.
+Each rule runs inside a container, on a laptop with Docker or on the cluster with
+Apptainer. [`docs/PIPELINE.md`](docs/PIPELINE.md) explains that model from scratch and
+covers setup, CoreHPC Slurm with GPU, building images, and troubleshooting.
 
 ## Quickstart
 
@@ -16,9 +14,10 @@ uv run ./workflow/test_pipeline.sh dry-run    # resolve the DAG
 uv run ./workflow/test_pipeline.sh run        # run the hello-world example in Docker
 ```
 
-`uv run` keeps deps in sync with `pyproject.toml` and runs each command with the project's `.venv` on `$PATH`, so there's no `activate` step.
+`uv run` keeps deps in sync with `pyproject.toml` and runs each command with the project's
+`.venv` on `$PATH`, so there is no `activate` step.
 
-On a cluster, submit snakemake **itself** as a job rather than running it from a login shell (which gets reaped when your SSH session drops):
+On CoreHPC, submit snakemake itself as a job (why: [`docs/PIPELINE.md`](docs/PIPELINE.md)):
 
 ```bash
 uv run ./workflow/test_pipeline.sh prepull <config>   # login node: fetch .sif files
@@ -28,6 +27,6 @@ uv run ./workflow/test_pipeline.sh prepull <config>   # login node: fetch .sif f
 
 ## Wiring in your own scripts
 
-To replace the hello-world example with your real pipeline, see [`AGENTS.md`](AGENTS.md): a step-by-step guide for turning existing R / Python / bash scripts into rules (written for coding agents such as Claude Code or Cursor, but worth reading yourself), including the questions to answer before adding each rule.
-
-See [`docs/PIPELINE.md`](docs/PIPELINE.md) for the rest.
+To replace the hello-world example with your real pipeline, see [`AGENTS.md`](AGENTS.md).
+It walks through turning existing R / Python / bash scripts into rules and lists the
+questions to answer before adding each one. Written for coding agents, readable by humans.

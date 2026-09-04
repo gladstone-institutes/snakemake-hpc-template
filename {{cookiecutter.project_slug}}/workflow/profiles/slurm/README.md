@@ -1,9 +1,10 @@
 # Slurm profile (UCSF CoreHPC)
 
-This profile targets UCSF CoreHPC (Gladstone) and is **validated end-to-end**
-with CPU and GPU jobs. It uses the `snakemake-executor-plugin-slurm` plugin,
-which handles job submission, status polling, and cancellation natively, so it
-needs no custom `status.sh` like the SGE profile.
+Targets UCSF CoreHPC (Gladstone), **validated end-to-end** with CPU and GPU jobs.
+Uses `snakemake-executor-plugin-slurm`, which handles submission, polling, and
+cancellation natively (no custom `status.sh`). This file is the single home for
+the driver-job pattern, notifications, and every CoreHPC gotcha; the user-facing
+overview is in [`../../../docs/PIPELINE.md`](../../../docs/PIPELINE.md).
 
 ## Setup
 
@@ -18,13 +19,11 @@ uv sync   # installs snakemake-executor-plugin-slurm (a pyproject.toml dep)
 uv run ./workflow/test_pipeline.sh dry-run-slurm   # validate DAG + config
 uv run ./workflow/test_pipeline.sh run-slurm       # run on the cluster (needs sbatch)
 
-# Real samples, via a per-cluster config (copy config_corehpc.yaml.example):
+# Real samples, via a per-cluster config (copy config_corehpc.yaml.example).
+# Prefer ../../launch.sh for anything long; the raw invocation is:
 snakemake --snakefile workflow/Snakefile \
     --configfile workflow/config/config_corehpc.yaml \
-    --profile workflow/profiles/slurm --dry-run     # confirm DAG first
-snakemake --snakefile workflow/Snakefile \
-    --configfile workflow/config/config_corehpc.yaml \
-    --profile workflow/profiles/slurm               # run live
+    --profile workflow/profiles/slurm --dry-run     # drop --dry-run to run live
 ```
 
 The Slurm account/partition defaults (`hpc_core` / `cpu`) live in this
