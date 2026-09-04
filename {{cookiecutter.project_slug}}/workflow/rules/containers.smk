@@ -1,8 +1,8 @@
-# Pre-pull images to .sif on the submit host. Compute nodes have no outbound
-# internet, so the Snakefile's onstart auto-pull cannot run from a submitted job.
+# Download images to .sif on the login node before a run. Compute nodes have no
+# outbound internet, so the Snakefile's onstart auto-pull cannot run from a job.
 # See workflow/profiles/slurm/README.md.
 #
-#   uv run ./workflow/test_pipeline.sh prepull      # or: ./workflow/launch.sh <scope> prepull
+#   uv run ./workflow/pipeline.sh prepull      # or: ./workflow/launch.sh <scope> prepull
 
 
 rule pull_container:

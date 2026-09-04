@@ -14,19 +14,19 @@
 <rect x="94" y="74" width="12" height="12" transform="rotate(45 100 80)" fill="#c39900" stroke="#ffffff" stroke-width="2"></rect>
 <text x="124" y="85" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="700" fill="#1f2328">Build the image on your laptop</text>
 <text x="124" y="104" font-size="12" fill="#656d76">Docker turns a Dockerfile into an image. The LABEL version becomes the tag.</text>
-<text x="124" y="127" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" fill="#1f2328"><tspan fill="#8c959f">$&#160;</tspan>./workflow/test_pipeline.sh build</text>
+<text x="124" y="127" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" fill="#1f2328"><tspan fill="#8c959f">$&#160;</tspan>./workflow/pipeline.sh build</text>
 <text x="124" y="146" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" fill="#c39900"><tspan fill="#8c959f" font-size="10" letter-spacing="1.5">IMAGE</tspan><tspan dx="10">user/tool:1.2.0</tspan></text>
 <text x="40" y="184" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22" font-weight="700" fill="#d37400">02</text>
 <rect x="94" y="170" width="12" height="12" transform="rotate(45 100 176)" fill="#d37400" stroke="#ffffff" stroke-width="2"></rect>
 <text x="124" y="181" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="700" fill="#1f2328">Push it to DockerHub</text>
 <text x="124" y="200" font-size="12" fill="#656d76">A registry is where other machines fetch the image from. Once per version.</text>
-<text x="124" y="223" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" fill="#1f2328"><tspan fill="#8c959f">$&#160;</tspan>./workflow/test_pipeline.sh build --push</text>
+<text x="124" y="223" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" fill="#1f2328"><tspan fill="#8c959f">$&#160;</tspan>./workflow/pipeline.sh build --push</text>
 <text x="124" y="242" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" fill="#d37400"><tspan fill="#8c959f" font-size="10" letter-spacing="1.5">REGISTRY</tspan><tspan dx="10">docker.io/user/tool:1.2.0</tspan></text>
 <text x="40" y="280" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22" font-weight="700" fill="#d84b00">03</text>
 <rect x="94" y="266" width="12" height="12" transform="rotate(45 100 272)" fill="#d84b00" stroke="#ffffff" stroke-width="2"></rect>
 <text x="124" y="277" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="700" fill="#1f2328">Pull it on the cluster login node</text>
 <text x="124" y="296" font-size="12" fill="#656d76">Apptainer saves the same image as one .sif file. Compute nodes have no internet.</text>
-<text x="124" y="319" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" fill="#1f2328"><tspan fill="#8c959f">$&#160;</tspan>./workflow/test_pipeline.sh prepull &lt;config&gt;</text>
+<text x="124" y="319" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" fill="#1f2328"><tspan fill="#8c959f">$&#160;</tspan>./workflow/pipeline.sh prepull &lt;config&gt;</text>
 <text x="124" y="338" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" fill="#d84b00"><tspan fill="#8c959f" font-size="10" letter-spacing="1.5">SIF</tspan><tspan dx="10">containers.dir/tool_1.2.0.sif</tspan></text>
 <text x="40" y="376" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22" font-weight="700" fill="#d01c29">04</text>
 <rect x="94" y="362" width="12" height="12" transform="rotate(45 100 368)" fill="#d01c29" stroke="#ffffff" stroke-width="2"></rect>

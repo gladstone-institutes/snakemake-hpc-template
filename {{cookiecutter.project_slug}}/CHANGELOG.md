@@ -2,5 +2,6 @@
 
 ## 0.1.0
 
-- Initial pipeline scaffold generated from
-  [snakemake-hpc-template](https://github.com/gladstone-institutes/snakemake-hpc-template).
+- Initial pipeline generated from
+  [snakemake-hpc-template](https://github.com/gladstone-institutes/snakemake-hpc-template)
+  version {{ cookiecutter._template_version }}.

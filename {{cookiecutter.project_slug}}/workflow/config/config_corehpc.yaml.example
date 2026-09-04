@@ -1,9 +1,9 @@
-# {{ cookiecutter.project_name }} - UCSF CoreHPC (Slurm) production config.
+# {{ cookiecutter.project_name }} - UCSF CoreHPC (Slurm) cluster config.
 #
 # Run on the cluster (see workflow/launch.sh -- do NOT run a long snakemake
 # from the login shell; CoreHPC reaps your processes when the SSH session drops):
 #   ./workflow/launch.sh all check      # dry-run, submit nothing
-#   ./workflow/launch.sh all            # pre-pull images + submit the driver job
+#   ./workflow/launch.sh all            # download images, then submit snakemake as a job
 #
 # Or directly, for short runs:
 #   snakemake --snakefile workflow/Snakefile \
@@ -15,8 +15,8 @@
 # lives in the `gpu:` block of config.yaml; the Slurm account/partition defaults
 # live in workflow/profiles/slurm/config.yaml.
 #
-# Non-Gladstone CoreHPC users: edit `output_dir`, `containers.dir`, and
-# `containers.bind_paths` to point at your own storage.
+# Non-Gladstone CoreHPC users: edit `project_root` (and `containers.bind_paths`
+# only if your shared scratch is not /mnt/scratch).
 
 project_name: "{{ cookiecutter.project_slug }}"
 
@@ -27,26 +27,35 @@ execution:
 notification:
   email: "{{ cookiecutter.notification_email }}"
 
-# CoreHPC Hive storage (visible as /mnt/... from compute nodes). TODO: edit to
-# your project path.
-output_dir: "/mnt/gladstone/bioinformatics/projects/{{ cookiecutter.project_slug }}/results"
+# The ONE path to edit: CoreHPC Hive storage, visible as /mnt/... from compute
+# nodes. The relative output_dir and containers.dir below resolve under it,
+# launch.sh keeps the uv/apptainer caches in <project_root>/.cache, and it is
+# bound into every container automatically. TODO: edit to your project storage.
+project_root: "/mnt/gladstone/bioinformatics/projects/{{ cookiecutter.project_slug }}"
+
+output_dir: "results"
 
 samples: "workflow/config/samples.tsv"
 
 containers:
-  # Directory of pre-pulled .sif files. Shared across runs/users if you want.
-  dir: "/mnt/gladstone/bioinformatics/projects/{{ cookiecutter.project_slug }}/containers"
+  # Pre-pulled .sif files, under project_root. Shared across runs/users if you want.
+  dir: "containers"
   # false: compute nodes have no outbound internet. Pull on the login node with
   # `./workflow/launch.sh <scope> prepull`.
   auto_pull: false
-  # Paths to bind into Apptainer containers. /mnt/scratch is shared scratch on
-  # CoreHPC compute nodes and is required for GPU jobs (tempfiles, matplotlib
-  # font cache, pyarrow spill must reach a path inside the container).
+  # Extra paths to bind into Apptainer containers (project_root is bound for
+  # you). /mnt/scratch is SHARED scratch, visible from every node, and is
+  # required for GPU jobs (tempfiles, matplotlib font cache, pyarrow spill).
+  # Node-local space is /tmp inside a job: Slurm mounts /mnt/lscratch there
+  # for the job's lifetime, and Apptainer binds /tmp by default, so nothing
+  # to add here for that.
   bind_paths:
     - "/mnt/scratch"
-    - "/mnt/gladstone/bioinformatics/projects/{{ cookiecutter.project_slug }}"
   images:
+    # Public image, so the setup check in docs/PIPELINE.md runs before you have
+    # built anything. Once you push your own image, point this at it:
+    #   user: "{{ cookiecutter.docker_username }}", name: "hello", tag: "0.1.0"
     hello:
-      user: "{{ cookiecutter.docker_username }}"
-      name: "hello"
-      tag: "0.1.0"
+      user: "library"
+      name: "bash"
+      tag: "5"

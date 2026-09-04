@@ -10,7 +10,7 @@ EXPECTED = [
     ".gitignore",
     ".python-version",
     "workflow/Snakefile",
-    "workflow/test_pipeline.sh",
+    "workflow/pipeline.sh",
     "workflow/rules/common.smk",
     "workflow/rules/containers.smk",
     "workflow/rules/hello.smk",
@@ -18,6 +18,7 @@ EXPECTED = [
     "workflow/scripts/hello.sh",
     "workflow/scripts/calibrate_resources.py",
     "workflow/scripts/resolve_sifs.py",
+    "workflow/scripts/config_paths.py",
     "workflow/config/config.yaml",
     "workflow/config/test_config.yaml",
     "workflow/config/test_config_apptainer.yaml",
@@ -53,7 +54,7 @@ def test_scripts_are_executable(cookies):
     assert result.exit_code == 0
     project = Path(result.project_path)
     for rel in (
-        "workflow/test_pipeline.sh",
+        "workflow/pipeline.sh",
         "workflow/launch.sh",
         "workflow/scripts/hello.sh",
         "workflow/profiles/sge/status.sh",
@@ -62,6 +63,23 @@ def test_scripts_are_executable(cookies):
         path = project / rel
         assert path.exists()
         assert path.stat().st_mode & 0o111, f"{rel} not executable"
+
+
+def test_template_version_is_in_sync(cookies):
+    """cookiecutter.json stamps the version into generated projects; it must match pyproject."""
+    import json
+    import tomllib
+
+    root = Path(__file__).resolve().parent.parent
+    pyproject = tomllib.loads((root / "pyproject.toml").read_text())["project"]["version"]
+    stamped = json.loads((root / "cookiecutter.json").read_text())["_template_version"]
+    assert stamped == pyproject, f"cookiecutter.json _template_version {stamped} != pyproject {pyproject}"
+    changelog = (root / "CHANGELOG.md").read_text()
+    assert f"## [{pyproject}]" in changelog, f"CHANGELOG.md has no entry for {pyproject}"
+    result = cookies.bake()
+    assert result.exit_code == 0
+    generated = (Path(result.project_path) / "CHANGELOG.md").read_text()
+    assert f"version {pyproject}" in generated
 
 
 def test_jinja_substitution_applied(cookies):

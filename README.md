@@ -4,14 +4,16 @@ A cookiecutter template for Snakemake + uv pipelines, built for **UCSF / Gladsto
 You write each rule once. The same workflow then runs in a container on your laptop or on
 the cluster, and the generated docs explain containers from scratch for people new to them.
 
-<img src="%7B%7Bcookiecutter.project_slug%7D%7D/docs/containers.svg" alt="Container lifecycle: build with Docker on a laptop, push to a registry, run with Apptainer on the cluster" width="640">
+<p align="center">
+  <img src="%7B%7Bcookiecutter.project_slug%7D%7D/docs/containers.svg" alt="Container lifecycle: build with Docker on a laptop, push to a registry, run with Apptainer on the cluster" width="640">
+</p>
 
 | Where | Container runtime | Command |
 |---|---|---|
-| Laptop | Docker | `./workflow/test_pipeline.sh run` |
-| Laptop or dev node | Apptainer | `./workflow/test_pipeline.sh run-apptainer` |
+| Laptop | Docker | `./workflow/pipeline.sh run` |
+| Laptop or dev node | Apptainer | `./workflow/pipeline.sh run-apptainer` |
 | **UCSF CoreHPC (Slurm)**, GPU validated | Apptainer | `./workflow/launch.sh all` |
-| Wynton (SGE), **deprecated and unmaintained** | Apptainer | `./workflow/test_pipeline.sh run-sge` |
+| Wynton (SGE), **deprecated and unmaintained** | Apptainer | `./workflow/pipeline.sh run-sge` |
 
 CoreHPC defaults are validated end to end (`hpc_core` account, `/mnt/scratch` bind,
 `small_gpu` / L40s routing) and include a driver-job launcher for runs too long to drive
@@ -23,6 +25,8 @@ from a login shell. Other Slurm sites adjust a few values listed in the generate
 ```bash
 pip install cookiecutter        # or: uv tool install cookiecutter
 cookiecutter gh:gladstone-institutes/snakemake-hpc-template
+# pin a release (see CHANGELOG.md):
+cookiecutter gh:gladstone-institutes/snakemake-hpc-template --checkout v0.2.0
 # or from a local clone:
 cookiecutter /path/to/snakemake-hpc-template
 ```
@@ -44,8 +48,8 @@ Then:
 ```bash
 cd my-snakemake-pipeline
 uv sync
-uv run ./workflow/test_pipeline.sh dry-run    # DAG resolves
-uv run ./workflow/test_pipeline.sh run        # runs the hello-world example in Docker
+uv run ./workflow/pipeline.sh dry-run    # DAG resolves
+uv run ./workflow/pipeline.sh run        # runs the hello-world example in Docker
 ```
 
 ## Wiring in your own workflow
@@ -83,7 +87,7 @@ my-snakemake-pipeline/
 │   ├── profiles/             # local, apptainer-dev, slurm, sge
 │   ├── containers/           # one Dockerfile + build.sh per image
 │   ├── launch.sh             # submit a cluster run as a Slurm driver job
-│   └── test_pipeline.sh      # dry-run | run | run-apptainer | run-slurm | prepull | build
+│   └── pipeline.sh      # dry-run | run | run-apptainer | run-slurm | prepull | build
 └── tests/                    # pytest smoke tests
 ```
 
@@ -95,7 +99,7 @@ pytest tests/
 ```
 
 `tests/test_bake.py` bakes the template into a tmpdir and asserts that core files exist.
-`tests/test_hello_dryrun.sh` bakes and runs `./workflow/test_pipeline.sh dry-run` end-to-end.
+`tests/test_hello_dryrun.sh` bakes and runs `./workflow/pipeline.sh dry-run` end-to-end.
 
 ## License
 

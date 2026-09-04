@@ -1,4 +1,4 @@
-# {{ cookiecutter.project_name }} - Wynton HPC production config.
+# {{ cookiecutter.project_name }} - Wynton HPC cluster config.
 #
 # DEPRECATED: Wynton / SGE support is no longer maintained. It is kept because
 # it still works and existing pipelines depend on it, but CoreHPC Slurm

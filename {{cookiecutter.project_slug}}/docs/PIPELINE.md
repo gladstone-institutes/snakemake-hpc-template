@@ -1,16 +1,16 @@
 # {{ cookiecutter.project_name }} - pipeline guide
 
-How to set up, run, and extend this Snakemake pipeline, scaffolded from
+How to set up, run, and extend this Snakemake pipeline, generated from
 [snakemake-hpc-template](https://github.com/gladstone-institutes/snakemake-hpc-template).
 Defaults target **UCSF CoreHPC (Slurm, with GPU)**, the supported and validated cluster path.
-Other Slurm sites need a few documented edits (account, partition, bind paths).
+Other Slurm sites change one path (`project_root`) and the Slurm account.
 
 > Turning existing scripts into rules, or pointing a coding agent at this repo?
 > Start with [`../AGENTS.md`](../AGENTS.md).
 
 ## Containers in one minute
 
-New to containers? Here is the whole model this pipeline relies on.
+New to containers? Five facts cover this pipeline.
 
 - A **container image** is a frozen software environment: an OS, your tool, its libraries.
   It is described by a `Dockerfile` and identified by `user/name:tag`.
@@ -24,7 +24,9 @@ New to containers? Here is the whole model this pipeline relies on.
   `execution.use_docker` / `execution.use_apptainer` in the config. The rule itself never
   changes.
 
-![Container lifecycle: build with Docker, push to a registry, run with Apptainer](containers.svg)
+<p align="center">
+  <img src="containers.svg" alt="Container lifecycle: build with Docker, push to a registry, run with Apptainer" width="640">
+</p>
 
 ## Prerequisites
 
@@ -37,45 +39,73 @@ New to containers? Here is the whole model this pipeline relies on.
 
 ```bash
 uv sync
-uv run ./workflow/test_pipeline.sh dry-run        # resolve the DAG
-uv run ./workflow/test_pipeline.sh run            # run locally in Docker
-uv run ./workflow/test_pipeline.sh run-apptainer  # run locally with Apptainer
+uv run ./workflow/pipeline.sh dry-run        # check the job graph (the DAG)
+uv run ./workflow/pipeline.sh run            # run locally in Docker
+uv run ./workflow/pipeline.sh run-apptainer  # run on the login node with Apptainer
 ```
 
 The shipped `hello` rule writes one greeting per sample to
 `.tests/integration/results/<sample>/hello.txt`. It uses the public `library/bash:5` image,
-so no DockerHub account is needed. Bash is required because Snakemake wraps every rule in
-`bash -c`; plain `alpine` fails under Apptainer.
+so no DockerHub account is needed.
 
 For real data, edit `workflow/config/config.yaml` and list samples in
 `workflow/config/samples.tsv` (columns `sample_id`, `description`, plus whatever your rules need).
 
 ## Running on UCSF CoreHPC (Slurm)
 
+### Check the setup first
+
+Run the shipped `hello` example on the cluster before wiring in your own scripts. It
+exercises every moving part (Apptainer, image download, Slurm submission, the driver job,
+the status file) with nothing of yours in the way, so a failure later can only be your
+rule. Finish each step before starting the next.
+
 ```bash
 ssh <you>@plog1.cmf.ucsf.edu      # a CoreHPC login node
 cd <your clone>
 uv sync
-cp workflow/config/config_corehpc.yaml.example workflow/config/config_corehpc.yaml  # edit paths
-uv run ./workflow/test_pipeline.sh dry-run-slurm   # validate DAG with the hello example
-uv run ./workflow/test_pipeline.sh run-slurm       # hello example, submitted to Slurm
 
-# Real runs: submit snakemake ITSELF as a driver job.
-./workflow/launch.sh all check                     # dry-run, submit nothing
-./workflow/launch.sh all                           # pre-pull images + submit driver
+# 1. The job graph resolves with the cluster profile.
+uv run ./workflow/pipeline.sh dry-run-slurm
+
+# 2. Two hello jobs run through Slurm. Short, so the login shell is fine here.
+#    Non-Gladstone: append --config project_root=/your/storage
+uv run ./workflow/pipeline.sh run-slurm
+
+# 3. The same example through the driver job, with your cluster config.
+cp workflow/config/config_corehpc.yaml.example workflow/config/config_corehpc.yaml  # edit project_root
+./workflow/launch.sh all check    # dry-run, submit nothing
+./workflow/launch.sh all          # download images, then submit the driver
+squeue --me                       # the driver, then one job per sample
 ```
 
-Three things `launch.sh` handles for you, each a real CoreHPC constraint:
+What each step should leave behind:
 
-- **Login shells are reaped** when your SSH session drops, tmux included. So snakemake runs
-  as its own Slurm job (the driver) and submits step jobs from a compute node.
-- **Compute nodes have no internet.** Images are pre-pulled on the login node, and the
+- Step 2: `<project_root>/.tests/integration/results/<sample>/hello.txt` for `sampleA` and
+  `sampleB`, and `bash_5.sif` in `<project_root>/containers/`.
+- Step 3: `<project_root>/results/<sample>/hello.txt` for every row of
+  `workflow/config/samples.tsv`, `<project_root>/results/logs/status/latest.txt` reading
+  `SUCCESS`, the driver's log under `<project_root>/results/logs/driver/`, and an email if
+  your site has Slurm mail set up.
+
+If a step fails, fix it here. The pitfalls list in
+[`../workflow/profiles/slurm/README.md`](../workflow/profiles/slurm/README.md) covers the
+usual causes. Only then replace `hello` with your rules, following [`../AGENTS.md`](../AGENTS.md).
+
+### How launch.sh runs the pipeline
+
+Real runs go through `launch.sh`, which handles three CoreHPC constraints:
+
+- **Login shells are ended** when your SSH session drops, tmux included. So snakemake runs
+  as its own Slurm job and submits the step jobs from a compute node. That job is the driver.
+- **Compute nodes have no internet.** Images are downloaded ahead of time on the login node, and the
   CoreHPC config sets `containers.auto_pull: false`.
-- **`$HOME` has a small quota.** The uv and Apptainer caches go on project storage instead.
+- **`$HOME` has a small quota.** The uv and Apptainer caches go to `<project_root>/.cache`.
 
-Add one entry to the `scope_setup` table in `launch.sh` per way you run the pipeline. Stop a
-driver with `scancel --signal=TERM <jobid>`. Account and partition defaults, resource
-mapping, and every cluster gotcha are in
+A scope is a named way of running the pipeline: which rules, which images, how long. Add one
+to the `scope_setup` table in `launch.sh` per way you run it. Stop a driver with
+`scancel --signal=TERM <jobid>`. Account and partition defaults, resource mapping, and
+every cluster pitfall are in
 [`../workflow/profiles/slurm/README.md`](../workflow/profiles/slurm/README.md).
 
 ### GPU rules
@@ -112,10 +142,10 @@ Images are built ahead of time, never during a run.
 - One Dockerfile serves both runtimes. A Docker image runs under Docker on a laptop and
   under Apptainer on the cluster, which converts it on pull. A `.sif` built from an
   Apptainer definition file runs only under Apptainer, so you would maintain two builds.
-- Building needs root-like privileges and internet access. A laptop has both. CoreHPC
-  compute nodes have neither, and Apptainer's own builds need fakeroot support on the host.
-- The registry is the hand-off: push once from the laptop, pull on any machine. Docker's
-  layer cache also keeps rebuilds fast after a small Dockerfile change.
+- Building needs root-like privileges and internet. A laptop has both; CoreHPC compute
+  nodes have neither.
+- The registry is where laptop and cluster meet: push once, pull anywhere. Docker also
+  caches build steps, so a rebuild after a small Dockerfile change is fast.
 - **Private images.** Docker Hub's free Personal plan allows one private repository, with
   unlimited public ones. Pull limits depend on the plan, see
   [Docker Hub usage and limits](https://docs.docker.com/docker-hub/usage/). For more private
@@ -130,22 +160,19 @@ Images are built ahead of time, never during a run.
    single source of truth for the tag; `build.sh` reads it.
 2. **Build** (plain `docker build` underneath, so `uv run` is optional):
    ```bash
-   ./workflow/test_pipeline.sh build <name>            # one image
-   ./workflow/test_pipeline.sh build                   # every image under workflow/containers/
-   ./workflow/test_pipeline.sh build <name> --no-cache # force rebuild
+   ./workflow/pipeline.sh build <name>            # one image
+   ./workflow/pipeline.sh build                   # every image under workflow/containers/
+   ./workflow/pipeline.sh build <name> --no-cache # force rebuild
    ```
 3. **Push** to DockerHub. Required before any cluster run, since Apptainer pulls from there:
    ```bash
-   ./workflow/test_pipeline.sh build <name> --push
+   ./workflow/pipeline.sh build <name> --push
    ```
 4. **Point the config at it.** In `workflow/config/test_config.yaml`, replace the
    `library/bash` quickstart values under `containers.images.hello` with
    `user: "{{ cookiecutter.docker_username }}"`, `name: "hello"`, `tag: "<version>"`.
    Bump `tag:` in `workflow/config/config.yaml` every time you bump `LABEL version`.
    A mismatch silently runs the old image.
-
-Your `docker_username` is baked into both `build.sh` (`IMAGE=`) and `config.yaml` (`user:`).
-Change both to retarget another registry.
 
 ## Adding a new rule
 
@@ -169,18 +196,23 @@ The short version:
    `IMAGE={{ cookiecutter.docker_username }}/<name>`.
 3. Register it under `containers.images.<name>` in `config.yaml` and `test_config.yaml`,
    with `tag:` matching the `LABEL version`.
-4. `./workflow/test_pipeline.sh build <name>`, then `--push`. Confirm the tag landed:
+4. `./workflow/pipeline.sh build <name>`, then `--push`. Confirm the tag landed:
    `docker manifest inspect {{ cookiecutter.docker_username }}/<name>:<tag>`.
-5. Before a cluster run: `uv run ./workflow/test_pipeline.sh prepull <config>` on a login node.
+5. Before a cluster run: `uv run ./workflow/pipeline.sh prepull <config>` on a login node.
 
 ## How it is wired
 
 Two helpers in `workflow/rules/common.smk` make one Snakefile run in every mode. Snakemake's
 `container:` directive is deliberately **not** used.
 
-- `docker_run("img")` returns a `docker run ...` prefix in Docker mode, else `""`.
+- `docker_run("img")` returns a `docker run ...` prefix in Docker mode, else `""`. It runs
+  as your user with `HOME=/workspace` by default (`execution.docker_run_as_user`), so
+  outputs are yours and `$HOME` matches Apptainer.
 - `apptainer_run("img", gpu=...)` returns an `apptainer exec ...` prefix in Apptainer mode,
   else `""`. With both empty the command runs on the host.
+- `project_root` in a cluster config is the one storage path. A relative `output_dir` or
+  `containers.dir` resolves under it, and it is bound into both runtimes. One function in
+  `workflow/scripts/config_paths.py` does this for the rules, `resolve_sifs.py`, and `launch.sh`.
 
 Resources are config-driven: each rule's `threads`, `mem_gb`, `runtime_min` live under
 `resources:` in `config.yaml`, and `_resources()` translates them to Slurm (or SGE) keys for
@@ -203,9 +235,9 @@ script is declared as an `input:` so edits rerun the rule, and every rule writes
 ssh log1.wynton.ucsf.edu
 cd <your clone>
 uv sync
-./workflow/test_pipeline.sh build --push          # optional: push custom images first
-uv run ./workflow/test_pipeline.sh dry-run-sge
-uv run ./workflow/test_pipeline.sh run-sge
+./workflow/pipeline.sh build --push          # optional: push custom images first
+uv run ./workflow/pipeline.sh dry-run-sge
+uv run ./workflow/pipeline.sh run-sge
 ```
 
 Wynton defaults are baked in: `/opt/sge/wynton/common/accounting` for `qacct` status checks
@@ -217,18 +249,18 @@ Wynton defaults are baked in: `/opt/sge/wynton/common/accounting` for `qacct` st
 
 ```
 workflow/
-├── Snakefile                 # orchestration; onstart/onsuccess/onerror hooks
+├── Snakefile                 # workflow entry point; onstart/onsuccess/onerror hooks
 ├── rules/
 │   ├── common.smk            # sample loader, docker_run/apptainer_run, _resources, notifications
-│   ├── containers.smk        # pull_container localrule (pre-pull SIFs on a login node)
+│   ├── containers.smk        # pull_container rule: download SIFs on a login node
 │   └── hello.smk             # example rule (copy its shape for new rules)
 ├── config/
-│   ├── config.yaml                    # production (resources: + gpu: blocks)
+│   ├── config.yaml                    # main config (resources: + gpu: blocks)
 │   ├── test_config.yaml               # local Docker
-│   ├── test_config_apptainer.yaml     # overlay for local/SGE Apptainer
-│   ├── test_config_apptainer_slurm.yaml  # overlay for CoreHPC Slurm
-│   ├── config_corehpc.yaml.example    # CoreHPC Slurm production
-│   └── config_wynton.yaml.example     # Wynton SGE production (DEPRECATED)
+│   ├── test_config_apptainer.yaml     # add-on for local/SGE Apptainer
+│   ├── test_config_apptainer_slurm.yaml  # add-on for CoreHPC Slurm
+│   ├── config_corehpc.yaml.example    # CoreHPC Slurm cluster config
+│   └── config_wynton.yaml.example     # Wynton SGE cluster config (DEPRECATED)
 ├── profiles/
 │   ├── local/                # Docker executor
 │   ├── apptainer-dev/        # Apptainer on a dev node
@@ -241,7 +273,7 @@ workflow/
 │   ├── calibrate_resources.py  # suggest resources: values from benchmark TSVs
 │   └── resolve_sifs.py       # config -> .sif paths (used by prepull)
 ├── launch.sh                 # submit a cluster run as a Slurm driver job
-└── test_pipeline.sh          # entry-point CLI
+└── pipeline.sh               # command-line helper: run, build, prepull, ...
 ```
 
 ## Troubleshooting
@@ -257,10 +289,11 @@ workflow/
   means `runtime_min` exceeds the partition MaxTime; `(Resources)` can mean no node has that
   much memory. Neither fails on its own. Cap `runtime_min` and `max_node_mem_gb`.
 - **`Failed to initialize cache ... Disk quota exceeded`.** The uv or Apptainer cache is in
-  `$HOME`. Point `UV_CACHE_DIR` / `APPTAINER_CACHEDIR` at project storage (`launch.sh` does).
+  `$HOME`. Point `UV_CACHE_DIR` / `APPTAINER_CACHEDIR` at project storage. `launch.sh`
+  puts them in `<project_root>/.cache`.
 - **A cheap rule wants to rebuild the whole pipeline.** An intermediate is missing, or a
   killed job left a `Forced execution` flag. `--rerun-triggers mtime` prevents neither.
-  Dry-run and read the job table first; `launch.sh` guarded scopes do this automatically.
+  Dry-run and read the job table first; read-only scopes in `launch.sh` do this automatically.
 - **An edited script did not rerun its rule.** The rule is missing
   `script=script_path(...)` in its `input:`.
 - **Stale lock after a killed driver.**

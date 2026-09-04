@@ -5,20 +5,13 @@
 
 Config layers merge in argument order, like multiple --configfile arguments.
 --images takes the KEYS under containers.images and errors on an unknown one.
-Mirrors common.smk:get_apptainer_path -- keep the two in sync.
+Mirrors common.smk:get_apptainer_path -- keep the two in sync. Path resolution
+(project_root) comes from config_paths.py, the same code common.smk uses.
 """
 
 import argparse
 
-import yaml
-
-BASE = "workflow/config/config.yaml"
-
-
-def merge(a, b):
-    for k, v in b.items():
-        a[k] = merge(a[k], v) if isinstance(v, dict) and isinstance(a.get(k), dict) else v
-    return a
+from config_paths import load, resolve
 
 
 def main():
@@ -27,10 +20,7 @@ def main():
     ap.add_argument("--images", default="", help="comma-separated image keys to include")
     args = ap.parse_args()
 
-    cfg = yaml.safe_load(open(BASE)) or {}
-    for path in args.configs:
-        if path != BASE:
-            cfg = merge(cfg, yaml.safe_load(open(path)) or {})
+    cfg = resolve(load(args.configs))
 
     containers = cfg["containers"]
     images = containers["images"]

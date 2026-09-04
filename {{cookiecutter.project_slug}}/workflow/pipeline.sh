@@ -1,14 +1,15 @@
 #!/bin/bash
-# Test-harness CLI for {{ cookiecutter.project_name }}.
+# Command-line helper for running {{ cookiecutter.project_name }}: dry-run, run,
+# build images, download images, lint.
 #
 # Requires snakemake on $PATH. Recommended: prefix with `uv run` so the
 # project's .venv is used without a separate `source .venv/bin/activate`:
 #
 #   uv sync                                      # once, after a fresh clone
-#   uv run ./workflow/test_pipeline.sh dry-run
+#   uv run ./workflow/pipeline.sh dry-run
 #
 # Usage:
-#   ./workflow/test_pipeline.sh [command] [extra snakemake args...]
+#   ./workflow/pipeline.sh [command] [extra snakemake args...]
 
 set -euo pipefail
 
@@ -53,7 +54,7 @@ require() {
 
 usage() {
     cat <<'EOF'
-Usage: ./workflow/test_pipeline.sh [command] [extra snakemake args...]
+Usage: ./workflow/pipeline.sh [command] [extra snakemake args...]
 
 Commands:
   dry-run              Snakemake dry-run (default)
@@ -63,21 +64,21 @@ Commands:
   run-slurm            Execute the pipeline (Slurm / CoreHPC cluster)
   dry-run-sge          Dry-run with SGE cluster profile      [DEPRECATED]
   run-sge              Execute the pipeline (SGE cluster)    [DEPRECATED]
-  prepull [cfg...]     Pull every configured image to a .sif on THIS host
+  prepull [cfg...]     Download every configured image as a .sif on THIS host
                           (run it on a login node: cluster compute nodes have no
                           outbound internet). Defaults to the Apptainer test
                           configs; pass config paths for a real cluster run.
   build [image] [flags] Build every Dockerfile under workflow/containers/
                           (optionally only <image>); flags like --push and
                           --no-cache forward to each build.sh.
-  dag                  Generate DAG visualization
+  dag                  Draw the job graph (DAG) as a PNG
   lint                 Lint Snakemake files
   pytest               Run Python unit tests (tests/)
   list-samples         List configured samples
   clean                Remove test output directory
 
 Extra arguments are forwarded to snakemake.
-Example: ./workflow/test_pipeline.sh run --forceall
+Example: ./workflow/pipeline.sh run --forceall
 EOF
 }
 
@@ -143,12 +144,11 @@ case "$cmd" in
         ;;
 
     prepull)
-        # Pre-pull .sif files via the pull_container localrule, on whatever host
-        # this runs from. Cluster compute nodes typically have no outbound
-        # internet, so the Snakefile's onstart auto-pull cannot reach a registry
-        # from inside a submitted job -- and in the driver-job pattern
-        # (workflow/launch.sh) snakemake itself runs on a compute node.
-        # Idempotent: snakemake skips images whose .sif already exists.
+        # Download .sif files via the pull_container rule, on whatever host this
+        # runs from. Cluster compute nodes typically have no outbound internet,
+        # so the Snakefile's onstart auto-pull cannot reach a registry from a
+        # submitted job, and with workflow/launch.sh snakemake itself runs on a
+        # compute node. Safe to rerun: images whose .sif exists are skipped.
         require apptainer
         if [[ $# -gt 0 ]]; then
             PREPULL_CONFIGS=("$@")

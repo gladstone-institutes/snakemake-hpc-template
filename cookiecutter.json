@@ -6,6 +6,7 @@
     "docker_username": "your-dockerhub-user",
     "python_version": "3.11",
     "notification_email": "{{ cookiecutter.author_email }}",
+    "_template_version": "0.2.0",
     "__prompts__": {
         "project_name": "Display name for the pipeline",
         "project_slug": "Repo / directory name (lowercase + hyphens; press Enter to auto-derive from project_name)",

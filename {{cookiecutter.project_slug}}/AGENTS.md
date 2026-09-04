@@ -2,8 +2,8 @@
 
 Guidance for coding agents helping a user turn their **existing analysis scripts**
 (R / Python / bash) into Snakemake rules in this pipeline. Read this first, then
-`workflow/rules/hello.smk` (the canonical rule) and `docs/PIPELINE.md` (full operational
-detail: building containers, clusters, GPU, troubleshooting).
+`workflow/rules/hello.smk` (the reference rule) and `docs/PIPELINE.md` (full detail:
+containers, clusters, GPU, troubleshooting).
 
 ## Mental model (read first)
 
@@ -23,7 +23,7 @@ This pipeline has a few deliberate conventions you must follow:
   CoreHPC Slurm (+ GPU), and deprecated Wynton SGE. You write a rule once; the profile +
   config pick the mode. Don't special-case modes inside a rule. **CoreHPC Slurm is the
   supported cluster path**; target it unless the user says they are on Wynton.
-- **Scripts live in `workflow/scripts/`** and are invoked from a rule's `shell:` —
+- **Scripts live in `workflow/scripts/`** and are invoked from a rule's `shell:`,
   **declared as an `input:`** via `script=script_path("my_step.R")` and called as
   `{input.script}`. Snakemake's `code` rerun trigger only tracks the rule's own shell
   directive, not the external file it calls, so without this an edited script silently
@@ -50,7 +50,7 @@ to add, get answers to the following. The right-hand side is what each answer de
   whether its output is requested in `rule all` via `expand(...)`.
 - **Invocation** - how is it run today? The exact command: interpreter (`Rscript` /
   `python` / `bash`) and the positional / flag argument order. -> the `shell:` line.
-- **Pipeline order** - which script's outputs feed which? -> the DAG. A downstream rule's
+- **Pipeline order** - which script's outputs feed which? -> the job graph (the DAG). A downstream rule's
   `input:` is the upstream rule's `output:`; Snakemake infers run order from that.
 - **Environment** - language plus packages and system tools. Is there an existing image,
   a `Dockerfile`, a conda env, or just "works on my machine"? -> reuse an image vs
@@ -63,9 +63,10 @@ to add, get answers to the following. The right-hand side is what each answer de
   -> the rule's entry under `resources:` in `config.yaml`.
 - **Data and filesystem** - where do raw inputs live on the target system? Is that a
   shared filesystem outside the working dir that Apptainer must be told to bind? ->
-  `output_dir`, `samples`, and `containers.bind_paths` in the cluster config.
-- **Hardcoded assumptions** - absolute paths, reliance on a specific working directory,
-  hardcoded output names baked into the script -> these must be parameterized to take
+  `project_root`, `samples`, and `containers.bind_paths` (filesystems outside
+  `project_root`) in the cluster config.
+- **Built-in assumptions** - absolute paths, reliance on a specific working directory,
+  output names fixed in the script -> these must be parameterized to take
   arguments so the rule controls them.
 - **Target environment** - laptop Docker, CoreHPC Slurm, GPU (or deprecated Wynton
   SGE)? -> which profile, and whether the image must be pushed to a registry first
@@ -76,9 +77,12 @@ but do not guess inputs / outputs or resources silently. State assumptions you m
 
 ## Wiring procedure
 
-1. **Inventory and sketch the DAG.** List the scripts, ask the questions above, and
+0. **Confirm the untouched template runs on the target first.** `pipeline.sh run` on the
+   laptop, and the CoreHPC checklist in `docs/PIPELINE.md` ("Check the setup first") on the
+   cluster. Skipping this makes every later failure ambiguous between setup and rule.
+1. **Inventory and sketch the job graph.** List the scripts, ask the questions above, and
    write down which outputs feed which so you know the rule chain before writing code.
-2. **Decide the container per tool.** Either reuse a suitable public image, or scaffold a
+2. **Decide the container per tool.** Either reuse a suitable public image, or set up a
    new one (built with Docker only; see "Why Docker builds" in `docs/PIPELINE.md`): `mkdir workflow/containers/<name>`, add a `Dockerfile` with
    `LABEL version="X.Y.Z"` (the single source of truth for the tag), copy
    `workflow/containers/hello/build.sh` into it and set `IMAGE=`, then register the image
@@ -86,7 +90,7 @@ but do not guess inputs / outputs or resources silently. State assumptions you m
    image must contain `bash` (Apptainer wraps every rule shell in `bash -c '...'`). See
    "Building your own container" in `docs/PIPELINE.md`.
 3. **Place the script** at `workflow/scripts/<name>.{R,py,sh}`. Parameterize any
-   hardcoded paths so it reads inputs / writes outputs from its command-line arguments.
+   paths written into the script so it reads inputs / writes outputs from its command-line arguments.
 4. **Write the rule** at `workflow/rules/<name>.smk`, copying `hello.smk`'s shape:
    ```python
    rule my_step:
@@ -121,7 +125,37 @@ but do not guess inputs / outputs or resources silently. State assumptions you m
    `workflow/scripts/hello.sh`, its `include:`, the `hello` entry under `resources:`, the
    `hello` container, and the `message` column if no rule uses it.
 
-## Conventions and gotchas
+## Writing the Dockerfile
+
+The image must behave the same under Docker on a laptop and Apptainer on the cluster.
+General Docker habits break that; these rules keep it:
+
+- **Environment only.** Never copy scripts or data into the image. Scripts are rule
+  inputs mounted at run time, and data is bound in.
+- **Pin everything.** A dated base (`rocker/r-ver:4.4.1`, `python:3.12-slim`, micromamba
+  with conda-forge and bioconda for bioinformatics binaries) and pinned package versions.
+  Never `latest`.
+- **No `ENTRYPOINT`, `CMD`, or `WORKDIR` assumptions.** The helper clears the entrypoint
+  and runs in the checkout (`/workspace` under Docker, `$(pwd)` under Apptainer). Rule
+  paths are relative to it.
+- **Environment variables differ.** Apptainer inherits the host environment, Docker does
+  not. Scripts take values as arguments and never read host variables.
+- **Threads.** Pass `{threads}` explicitly and set `OMP_NUM_THREADS`,
+  `OPENBLAS_NUM_THREADS`, and `MKL_NUM_THREADS` to it in the shell. Otherwise BLAS uses
+  every core on the node while Slurm allocated a few.
+- **`$HOME` is the checkout in both runtimes.** Tools that cache under `$HOME`
+  (matplotlib, huggingface, R user libraries) write into the repo. Point large caches at
+  scratch through an env var set in the rule.
+- **Lean, one image per tool family.** Big images pull slowly on the cluster and eat the
+  cache quota.
+- **Build for the cluster's CPU.** `build.sh` passes `--platform linux/amd64`. Keep it
+  when copying the script, or an Apple Silicon build will not run on CoreHPC.
+
+Docker runs as the invoking user by default (`execution.docker_run_as_user: true`), so
+outputs are never root-owned. Do not add `USER` directives or `chown` steps to work around
+ownership; set the toggle to false only for an image that must run as root.
+
+## Conventions and pitfalls
 
 - **DO** copy `hello.smk` exactly: both the `docker` and `apptainer` params, `_threads`,
   `**_resources`, and a `benchmark:`.
@@ -141,20 +175,20 @@ but do not guess inputs / outputs or resources silently. State assumptions you m
        **_resources_sized("my_step"),
        runtime=lambda wildcards: _runtime_min_scaled("my_step", wildcards.sample),
   ```
-  `runtime_min` then acts as the CAP — set it to the partition MaxTime, because a Slurm
-  request above MaxTime is accepted and then pends forever as `(PartitionTimeLimit)`
-  rather than erroring.
-- **Expose size/count thresholds as config, don't hardcode them.** A threshold tuned for
-  production (minimum donors, minimum group size, a k grid) makes a small test fixture
-  cover *nothing* while still reporting success — or, worse, errors on an empty
+  `runtime_min` then acts as the cap. Set it to the partition MaxTime, because a Slurm
+  request above MaxTime is accepted and then waits in the queue forever as
+  `(PartitionTimeLimit)` rather than erroring.
+- **Expose size/count thresholds as config, don't write them into the script.** A threshold
+  tuned for real data (minimum donors, minimum group size, a k grid) makes a small test
+  dataset cover *nothing* while still reporting success, or, worse, errors on an empty
   intermediate far downstream. Put the threshold in `config.yaml`, shrink it in the test
   config, and make the consumer tolerate the empty result. Fix the class of problem, not
   the one instance that broke.
 - **Read a sample sheet via `params:`, never declare it as an `input:`.** As an input, any
-  `git pull` that bumps its mtime reruns every rule that depends on it, forever.
+  `git pull` that changes its modification time reruns every rule that depends on it, forever.
 - **Anything a tool writes that you did not declare as an output is never cleaned up** by
-  Snakemake — cache and checkpoint directories especially. If the tool then refuses to
-  reuse a checkpoint written under a different configuration, that guard is correct: delete
+  Snakemake, cache and checkpoint directories especially. If the tool then refuses to
+  reuse a checkpoint written under a different configuration, that refusal is correct: delete
   the stale directory by hand rather than working around it.
 - **Declare every output** the script writes; Snakemake only tracks declared outputs and
   removes them on failure to keep state consistent.
@@ -170,13 +204,13 @@ but do not guess inputs / outputs or resources silently. State assumptions you m
   `hello.smk`'s header comment and `workflow/profiles/slurm/README.md`.
 - Bump the image `tag:` in `config.yaml` whenever you bump the Dockerfile `LABEL version`,
   or the pipeline silently runs the old image. After `build.sh --push`, **verify the tag
-  actually landed on the registry** (`docker manifest inspect <user>/<img>:<tag>`) — a
+  actually landed on the registry** (`docker manifest inspect <user>/<img>:<tag>`). A
   cluster run pulls from there, and a missing tag surfaces as a confusing pull failure
   hours later.
 - **End every Dockerfile with a verification `RUN`** that imports/loads each package the
   rules need (and asserts the base image version, if you build `FROM` your own image).
   A failed install otherwise ships silently and fails inside a cluster job instead.
-- **Pre-pull images before a cluster run**: `uv run ./workflow/test_pipeline.sh prepull`
+- **Download images before a cluster run**: `uv run ./workflow/pipeline.sh prepull`
   (or `./workflow/launch.sh <scope> prepull`) on the login node. Compute nodes usually
   have no outbound internet, so the `onstart` auto-pull cannot reach the registry from a
   submitted job.
@@ -184,29 +218,29 @@ but do not guess inputs / outputs or resources silently. State assumptions you m
 ## Verify your work
 
 ```bash
-uv run ./workflow/test_pipeline.sh dry-run    # DAG resolves; no resources KeyError
-uv run ./workflow/test_pipeline.sh lint       # snakemake lint
-uv run ./workflow/test_pipeline.sh run        # end-to-end, if Docker is available
+uv run ./workflow/pipeline.sh dry-run    # job graph resolves; no resources KeyError
+uv run ./workflow/pipeline.sh lint       # snakemake lint
+uv run ./workflow/pipeline.sh run        # end-to-end, if Docker is available
 ```
 
 Outputs land under `.tests/integration/results/<sample>/`. Adjust
 `workflow/config/test_samples.tsv` to exercise your rule. Before any real cluster submit,
-run `dry-run-slurm` (or `dry-run-sge` on the deprecated Wynton path) to confirm the DAG
+run `dry-run-slurm` (or `dry-run-sge` on the deprecated Wynton path) to confirm the job graph
 and resource translation.
 
-Once the pipeline has real steps, add a third tier between `dry-run` (no data) and a
-production run: a **smoke config** (`workflow/config/smoke_config.yaml`) that runs the
-whole DAG on a tiny committed fixture with every threshold shrunk. A dry-run only proves
-the DAG resolves; the smoke proves the scripts actually run and their outputs chain.
+Once the pipeline has real steps, add a quick end-to-end test between `dry-run` (no data)
+and a full run on real data: a config (`workflow/config/quick_test_config.yaml`) that runs
+the whole job graph on a tiny committed dataset with every threshold shrunk. A dry-run only
+proves the graph resolves; the quick test proves the scripts run and their outputs chain.
 That is what the config-driven-thresholds rule above is for.
 
 ## Pointers
 
-- `workflow/rules/hello.smk` - the canonical rule shape (copy it).
+- `workflow/rules/hello.smk` - the reference rule shape (copy it).
 - `workflow/rules/common.smk` - the helpers every rule uses.
 - `docs/PIPELINE.md` - full operational guide (containers, build / push, clusters, GPU,
   adding rules and containers).
-- `workflow/profiles/slurm/README.md` - CoreHPC Slurm + GPU specifics, the driver-job
-  pattern, and the cluster gotchas that cost real debugging.
-- `workflow/launch.sh` - submit a cluster run as a Slurm driver job (login shells are
-  reaped when SSH drops; the slurm README explains).
+- `workflow/profiles/slurm/README.md` - CoreHPC Slurm + GPU specifics, the driver job
+  (snakemake running as its own Slurm job), and the cluster pitfalls that cost real debugging.
+- `workflow/launch.sh` - submit snakemake itself as a Slurm job, the driver (login shells
+  are ended when SSH drops; the slurm README explains).

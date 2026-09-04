@@ -1,5 +1,5 @@
 # {{ cookiecutter.project_name }} - local Docker testing config.
-# Used by `./workflow/test_pipeline.sh run` (and dry-run).
+# Used by `./workflow/pipeline.sh run` (and dry-run).
 
 project_name: "{{ cookiecutter.project_slug }}-test"
 
@@ -7,8 +7,8 @@ output_dir: ".tests/integration/results"
 samples: "workflow/config/test_samples.tsv"
 
 # Local Docker mode: docker_run() returns a `docker run` prefix.
-# Both flags must be set explicitly: --configfile deep-merges with config.yaml,
-# so omitting use_apptainer leaves the production default (true) in effect and
+# Both flags must be set explicitly: --configfile is merged over config.yaml,
+# so omitting use_apptainer leaves the config.yaml default (true) in effect and
 # trips the SIF auto-pull in onstart.
 execution:
   use_docker: true
@@ -19,7 +19,7 @@ execution:
 # wraps every rule shell in `bash -c 'set -euo pipefail; ...'`; plain alpine
 # would fail with `"bash": executable file not found in $PATH`.
 # Once you've built and pushed your own image with
-#   ./workflow/test_pipeline.sh build --push
+#   ./workflow/pipeline.sh build --push
 # swap the values below for:
 #   user: "{{ cookiecutter.docker_username }}"
 #   name: "hello"

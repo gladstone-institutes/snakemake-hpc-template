@@ -1,6 +1,6 @@
 # common.smk - Shared helpers for {{ cookiecutter.project_name }}.
 #
-# Load-bearing pieces:
+# Main pieces:
 #   - PIPELINE_VERSION: read from pyproject.toml; injected into notifications.
 #   - SHADOW_MODE: 'shallow' on HPC (Apptainer), None under local Docker.
 #   - USE_APPTAINER: true on HPC, drives the onstart SIF auto-pull.
@@ -11,13 +11,16 @@
 #   - script_path: path to a script under workflow/scripts. Every rule declares
 #     its script as an input so editing the script reruns the rule.
 #   - sif_to_docker_uri: reverse lookup used by the pull_container rule.
-#   - _resources / _threads: translate canonical config["resources"][rule]
+#   - _resources / _threads: translate the standard config["resources"][rule]
 #     (mem_gb / runtime_min / threads) to scheduler-specific keys per profile.
-#   - _resources_sized / _runtime_min_scaled: opt-in size-aware runtime for
+#   - _resources_sized / _runtime_min_scaled: optional size-aware runtime for
 #     rules whose wall time scales with a per-sample column.
 #   - gpu_sampler_prefix: optional nvidia-smi utilization logger for GPU rules.
+#   - PROJECT_ROOT: optional single storage path. output_dir / containers.dir
+#     resolve under it (scripts/config_paths.py, shared with resolve_sifs.py
+#     and launch.sh) and it is bound into both container runtimes.
 #   - write_status: terminal-state file under {output_dir}/logs/status.
-#   - send_notification: opt-in email via mail/sendmail when configured.
+#   - send_notification: optional email via mail/sendmail when configured.
 
 import os as _os
 import sys
@@ -29,12 +32,23 @@ import pandas as pd
 with open(Path(workflow.basedir).parent / "pyproject.toml", "rb") as _f:
     PIPELINE_VERSION = tomllib.load(_f)["project"]["version"]
 
+# Must run before anything reads output_dir / containers.dir: the Snakefile
+# includes this file first, ahead of wildcard_constraints and rule all.
+sys.path.insert(0, str(Path(workflow.basedir) / "scripts"))
+from config_paths import resolve as _resolve_paths
+
+_resolve_paths(config)
+PROJECT_ROOT = config.get("project_root")
+
 SHADOW_MODE = None if config.get("execution", {}).get("use_docker", False) else "shallow"
 USE_APPTAINER = config.get("execution", {}).get("use_apptainer", False)
 NOTIFICATION_EMAIL = config.get("notification", {}).get("email", None)
 
 # Bind extra paths into Apptainer containers (shared filesystems outside $PWD).
-_bind_paths = config.get("containers", {}).get("bind_paths", [])
+# project_root is bound automatically so users list only other filesystems.
+_bind_paths = list(config.get("containers", {}).get("bind_paths", []))
+if PROJECT_ROOT and PROJECT_ROOT not in _bind_paths:
+    _bind_paths.append(PROJECT_ROOT)
 if _bind_paths:
     _extra = ",".join(_bind_paths)
     _existing = _os.environ.get("APPTAINER_BIND", "")
@@ -45,7 +59,7 @@ if _bind_paths:
 def write_status(state, body=""):
     """Write {output_dir}/logs/status/<stamp>_<state>.txt + latest.txt.
 
-    The completion signal that works on CoreHPC, which has no MTA. Never raises.
+    The completion signal that works on CoreHPC, which has no mail program. Never raises.
     """
     from datetime import datetime, timezone
 
@@ -115,7 +129,8 @@ def get_docker_image(image_name):
 
 
 def get_apptainer_path(image_name):
-    """Return the local .sif path for an image (used on HPC with Apptainer)."""
+    """Return the local .sif path for an image (used on HPC with Apptainer).
+    Mirrored by scripts/resolve_sifs.py; containers.dir is already resolved."""
     container_dir = config["containers"]["dir"]
     image_config = config["containers"]["images"][image_name]
     name = image_config["name"]
@@ -153,13 +168,22 @@ def docker_run(image_name, extra_args=""):
     Returns an empty string when not in Docker mode so the same rule shell
     string works in any of the three execution modes (Docker, Apptainer, host).
     `apptainer_run` is the symmetric helper for Apptainer mode.
+
+    By default (execution.docker_run_as_user) the container runs as the
+    invoking user so outputs are not root-owned on Linux hosts, with HOME set
+    to the mounted checkout: an arbitrary uid has no passwd entry in the image,
+    and this mirrors apptainer_run's `--home $(pwd)`.
     """
-    if config.get("execution", {}).get("use_docker", False):
+    execution = config.get("execution", {})
+    if execution.get("use_docker", False):
         image_path = get_docker_image(image_name).replace("docker://", "")
         extra = f" {extra_args}" if extra_args else ""
-        bind_mounts = " ".join(
-            f"-v '{m}:{m}'" for m in config.get("execution", {}).get("docker_bind_mounts", [])
-        )
+        if execution.get("docker_run_as_user", True):
+            extra += " --user $(id -u):$(id -g) -e HOME=/workspace"
+        mounts = list(config.get("execution", {}).get("docker_bind_mounts", []))
+        if PROJECT_ROOT and PROJECT_ROOT not in mounts:
+            mounts.append(PROJECT_ROOT)
+        bind_mounts = " ".join(f"-v '{m}:{m}'" for m in mounts)
         if bind_mounts:
             bind_mounts = f" {bind_mounts}"
         # --entrypoint='' clears any image ENTRYPOINT so the rule's shell
@@ -183,7 +207,7 @@ def apptainer_run(image_name, gpu=False):
         return ""
     sif = get_apptainer_path(image_name)
     args = ["--home $(pwd)"]
-    for p in config.get("containers", {}).get("bind_paths", []):
+    for p in _bind_paths:
         args.append(f"--bind {p}")
     if gpu:
         args.append("--nv")
@@ -194,7 +218,7 @@ def apptainer_run(image_name, gpu=False):
         #     Map it manually to CUDA_VISIBLE_DEVICES. The :? form makes bash
         #     exit if $SGE_GPU is unset (e.g. running outside SGE without
         #     a manual override) instead of silently grabbing device 0.
-        #   - slurm: Slurm sets CUDA_VISIBLE_DEVICES itself via cgroups when
+        #   - slurm: Slurm sets CUDA_VISIBLE_DEVICES itself for the job when
         #     --gres=gpu:N is requested. Apptainer inherits the caller's env
         #     (we do NOT use --cleanenv) so torch picks it up automatically.
         #     Adding our own --env would override Slurm's value, which is wrong.
@@ -219,8 +243,8 @@ def gpu_sampler_prefix(out_dir, rule_name, gpu):
     id resolved at runtime (Slurm, then SGE, then 'local'), so resubmissions never
     clobber prior samples and each file ties back to a job for sacct/log lookups.
 
-    nvidia-smi runs on the host (placed before the container prefix); on Slurm the
-    job cgroup scopes it to the allocated GPU. Guarded by `command -v` so a node
+    nvidia-smi runs on the host (placed before the container prefix); on Slurm it
+    sees only the job's allocated GPU. Guarded by `command -v` so a node
     without nvidia-smi degrades to no-CSV rather than failing the rule. The EXIT
     trap preserves the rule's exit code, so the sampler can't mask a failure.
     """
@@ -257,7 +281,7 @@ def _mem_mb_for_attempt(mem_gb):
     """mem_mb callable that doubles per retry, capped at max_node_mem_gb.
 
     A no-op without --retries. The cap matters because an unsatisfiable request
-    pends forever as (Resources) rather than failing.
+    waits in the queue forever as (Resources) rather than failing.
     """
     base_mb = int(mem_gb * 1024)
     cap_mb = int(config.get("max_node_mem_gb", 1500) * 1024)
@@ -269,7 +293,7 @@ def _mem_mb_for_attempt(mem_gb):
 
 
 def _resources(rule_name, gpu=False):
-    """Translate canonical resource fields to scheduler-specific keys.
+    """Translate the standard resource fields to scheduler-specific keys.
 
     Reads ``config["resources"][rule_name]``:
       - threads:     int
@@ -331,7 +355,7 @@ def _resources(rule_name, gpu=False):
 
 
 def _runtime_min_scaled(rule_name, sample, column="size"):
-    """Opt-in size-aware runtime: runtime_base_min + runtime_per_size_min * n,
+    """Optional size-aware runtime: runtime_base_min + runtime_per_size_min * n,
     clamped to runtime_min (set that to the partition MaxTime). Rules without
     runtime_per_size_min get the flat value. Recipe in AGENTS.md.
     """

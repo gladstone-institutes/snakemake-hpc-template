@@ -1,15 +1,15 @@
 #!/bin/bash
-# Launch a Slurm run as a *driver job*: CoreHPC login nodes reap your processes
-# when SSH drops, so snakemake itself has to run on a compute node. Rationale
-# and cluster gotchas: workflow/profiles/slurm/README.md.
+# Submit snakemake itself as a Slurm job, the driver (it submits the step jobs).
+# CoreHPC login nodes end your processes when SSH drops, so snakemake has to run
+# on a compute node. Rationale and cluster pitfalls: workflow/profiles/slurm/README.md.
 #
 # Usage (from the repo root on a login node):
-#   ./workflow/launch.sh <scope>            # pre-pull images, then submit driver
+#   ./workflow/launch.sh <scope>            # download images, then submit driver
 #   ./workflow/launch.sh <scope> check      # dry-run locally, submit nothing
 #   ./workflow/launch.sh <scope> prepull    # fetch images only, submit nothing
 #   DRIVER_TIME=2-00:00:00 ./workflow/launch.sh all
 #
-# Images are pre-pulled here on the login node (compute nodes have no internet).
+# Images are downloaded here on the login node (compute nodes have no internet).
 # Completion mail is requested from the Slurm controller, and every run writes
 # {output_dir}/logs/status/latest.txt.
 #
@@ -26,25 +26,26 @@ CONFIG="workflow/config/config_corehpc.yaml"
 PROFILE="workflow/profiles/slurm"
 
 # ---------------------------------------------------------------------------
-# Scopes: one entry per way you actually run this pipeline.
+# Scopes: a scope is a named way of running this pipeline (which rules, which
+# images, how long). One entry per way you actually run it.
 #
-#   SCOPE_CONFIGS  extra --configfile layers, merged after $CONFIG
-#   SCOPE_UNTIL    --until rule names (empty = default target). Names every LEAF
-#                  you want; a named rule becomes terminal, so an in-scope
-#                  ancestor goes in SCOPE_ALLOW instead.
+#   SCOPE_CONFIGS  extra --configfile files, merged after $CONFIG
+#   SCOPE_UNTIL    --until rule names (empty = default target). Names every final
+#                  rule you want; the run stops at a named rule, so an in-scope
+#                  upstream rule goes in SCOPE_ALLOW instead.
 #   SCOPE_ALLOW    extra rule names guard_dag tolerates
 #   SCOPE_IMAGES   image keys to pre-pull (empty = none)
-#   SCOPE_FLAGS    extra snakemake flags; placed BEFORE --configfile, whose
-#                  nargs='+' would otherwise swallow them
-#   SCOPE_TIME     default driver walltime; must be <= the partition MaxTime or
-#                  the job pends forever as (PartitionTimeLimit)
+#   SCOPE_FLAGS    extra snakemake flags; placed BEFORE --configfile, which
+#                  takes any number of values and would swallow them
+#   SCOPE_TIME     default driver time limit; must be <= the partition MaxTime or
+#                  the job waits in the queue forever as (PartitionTimeLimit)
 #   SCOPE_GUARD    1 = read-only scope: dry-run first, refuse to submit if the
-#                  DAG grew beyond SCOPE_UNTIL + SCOPE_ALLOW
+#                  job graph grew beyond SCOPE_UNTIL + SCOPE_ALLOW
 # ---------------------------------------------------------------------------
 scope_setup() {
   case "$1" in
     all)
-      # Unguarded: building everything IS the scope. Run `check` first.
+      # Not checked: building everything IS the scope. Run `check` first.
       SCOPE_CONFIGS=()
       SCOPE_UNTIL=()
       SCOPE_ALLOW=()
@@ -78,16 +79,17 @@ usage() {
   cat >&2 <<'EOF'
 Usage: ./workflow/launch.sh <scope> [check|prepull]
 
-Scopes:
+Scopes (a named way of running the pipeline: which rules, images, time limit):
   all      the whole pipeline (rule all)
            (add your own in scope_setup() -- see the commented example)
 
 Subcommands:
-  (none)   pre-fetch images, then submit the driver job
+  (none)   download images, then submit snakemake as a Slurm job (the driver)
   check    dry-run locally, submit nothing
   prepull  fetch images only, submit nothing
 
-Env overrides: ACCOUNT, PARTITION, DRIVER_TIME, DRIVER_MEM, CACHE_ROOT,
+Env overrides: ACCOUNT, PARTITION, DRIVER_TIME, DRIVER_MEM,
+               CACHE_ROOT (uv + apptainer caches; default <project_root>/.cache),
                SCRATCH_TMP (apptainer build temp; defaults to
                /mnt/scratch/user/$USER, which is what makes pulls fast),
                NOTIFY_EMAIL (defaults to notification.email in the config),
@@ -117,18 +119,24 @@ DRIVER_MEM="${DRIVER_MEM:-4G}"             # orchestrator only polls; stays ligh
 
 require() { command -v "$1" &>/dev/null || { echo "Error: $1 not found." >&2; exit 1; }; }
 
-# Caches must not live in $HOME: the quota fills with image layers and uv then
+# Caches must not live in $HOME: the quota fills with image data and uv then
 # dies with "Failed to initialize cache ... Disk quota exceeded". Parsed with
 # sed, not uv, because uv is exactly what breaks in that state.
 if [[ -z "${CACHE_ROOT:-}" ]]; then
-  _out_dir="$(sed -n 's/^output_dir:[[:space:]]*"\([^"]*\)".*/\1/p' "$CONFIG")"
-  # Absolute, or a failed parse ("" -> dirname ".") puts caches in the checkout.
-  if [[ -z "$_out_dir" || "$_out_dir" != /* ]]; then
-    echo "Error: could not parse an absolute output_dir from $CONFIG." >&2
-    echo "       Set CACHE_ROOT=/path/on/shared/fs explicitly." >&2
-    exit 1
+  _root="$(sed -n 's/^project_root:[[:space:]]*"\([^"]*\)".*/\1/p' "$CONFIG")"
+  if [[ -n "$_root" && "$_root" == /* ]]; then
+    CACHE_ROOT="${_root%/}/.cache"
+  else
+    # No project_root: fall back to the parent of an absolute output_dir.
+    _out_dir="$(sed -n 's/^output_dir:[[:space:]]*"\([^"]*\)".*/\1/p' "$CONFIG")"
+    # Absolute, or a failed parse ("" -> dirname ".") puts caches in the checkout.
+    if [[ -z "$_out_dir" || "$_out_dir" != /* ]]; then
+      echo "Error: $CONFIG sets neither an absolute project_root nor an absolute output_dir." >&2
+      echo "       Set project_root in the config, or CACHE_ROOT=/path/on/shared/fs." >&2
+      exit 1
+    fi
+    CACHE_ROOT="$(dirname "$_out_dir")/.cache"
   fi
-  CACHE_ROOT="$(dirname "$_out_dir")/.cache"
 fi
 export UV_CACHE_DIR="${UV_CACHE_DIR:-$CACHE_ROOT/uv}"
 export APPTAINER_CACHEDIR="${APPTAINER_CACHEDIR:-$CACHE_ROOT/apptainer}"
@@ -154,8 +162,9 @@ require uv
 # bash 3.2 (macOS), which treats an empty array's [@] as unbound.
 CONFIGS=("$CONFIG" ${SCOPE_CONFIGS[@]+"${SCOPE_CONFIGS[@]}"})
 
-# Pull this scope's .sif files locally (login node) via the pull_container
-# localrule. Idempotent; scoped so an unrelated image's missing tag can't block.
+# Download this scope's .sif files here (login node) via the pull_container
+# rule. Safe to rerun (existing files are skipped); limited to this scope so an
+# unrelated image's missing tag can't block.
 prepull_images() {
   [[ -n "${SCOPE_IMAGES[*]:-}" ]] || { echo "Scope '$SCOPE' declares no images to pre-pull."; return 0; }
   require apptainer
@@ -193,7 +202,7 @@ dag_rules() {
   ' <<<"$out" | sort -u
 }
 
-# Refuse to submit a read-only scope whose DAG grew beyond its own rules: that
+# Refuse to submit a read-only scope whose job graph grew beyond its own rules: that
 # means broken upstream state, and the expensive case looks exactly like the
 # cheap one until you read the job table. Not skippable by a flag, on purpose.
 guard_dag() {
@@ -225,10 +234,11 @@ guard_dag() {
   echo "DAG is clean: $(wc -l <<<"$rules") rule(s), all expected."
 }
 
-# output_dir from the config so the driver log lands beside the results.
-OUT=$(uv run python -c "import yaml;print(yaml.safe_load(open('$CONFIG'))['output_dir'])")
+# Resolved output_dir (project_root applied) so the driver log lands beside
+# the results. Merges every config file, like snakemake will.
+OUT=$(uv run python workflow/scripts/config_paths.py --key output_dir "${CONFIGS[@]}")
 
-# Sent by slurmctld, not the job, so no MTA is needed on the node.
+# Sent by slurmctld, not the job, so no mail program is needed on the node.
 NOTIFY_EMAIL="${NOTIFY_EMAIL:-$(uv run python -c "import yaml;print((yaml.safe_load(open('$CONFIG')).get('notification') or {}).get('email') or '')")}"
 MAIL_TYPE="${MAIL_TYPE:-END,FAIL}"
 MAIL_ARGS=()
@@ -259,7 +269,7 @@ esac
 
 require sbatch
 
-# Read-only scopes verify the DAG before anything is submitted or pulled, so a
+# Read-only scopes check the job graph before anything is submitted or pulled, so a
 # broken upstream fails here in seconds rather than as a queued multi-day job.
 guard_dag
 prepull_images
@@ -270,8 +280,8 @@ mkdir -p "$DRIVERDIR"
 JOBSCRIPT="$DRIVERDIR/${SCOPE}_${STAMP}.sbatch"
 LOG="$DRIVERDIR/${SCOPE}_${STAMP}_%j.log"
 
-# Written to a file, not piped via sbatch stdin, and the argv is printed: the
-# stdin route once reached snakemake with a stray empty argument.
+# Written to a file, not piped into sbatch, and the exact command is printed:
+# the piped route once reached snakemake with a stray empty argument.
 cat > "$JOBSCRIPT" <<EOF
 #!/bin/bash
 set -euo pipefail
@@ -287,7 +297,7 @@ mkdir -p "\$UV_CACHE_DIR" "\$APPTAINER_CACHEDIR" "\$APPTAINER_TMPDIR"
 
 SMK=(uv run snakemake --snakefile workflow/Snakefile ${SCOPE_FLAGS[*]:-} --configfile ${CONFIGS[*]} --profile "$PROFILE")
 
-echo "snakemake argv:"
+echo "snakemake command:"
 printf '  <%s>\n' "\${SMK[@]}" ${SCOPE_UNTIL[*]:+--until ${SCOPE_UNTIL[*]}}
 
 # Clear any stale lock from a previously killed driver, then run.
@@ -312,7 +322,7 @@ JOBID=$(sbatch --parsable \
 RESOLVED_LOG="$DRIVERDIR/${SCOPE}_${STAMP}_${JOBID}.log"
 echo "Submitted driver job $JOBID"
 echo "  scope:   $SCOPE -- $SCOPE_DESC"
-echo "  driver:  ${DRIVER_TIME} walltime, ${DRIVER_MEM}, 1 cpu, partition $PARTITION"
+echo "  driver:  ${DRIVER_TIME} time limit, ${DRIVER_MEM}, 1 cpu, partition $PARTITION"
 echo "  script:  $JOBSCRIPT"
 echo "  log:     $RESOLVED_LOG"
 if [[ -n "${MAIL_ARGS[*]:-}" ]]; then

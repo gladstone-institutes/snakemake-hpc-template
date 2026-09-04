@@ -1,5 +1,5 @@
-# Apptainer overlay for local run-apptainer testing.
-# Deep-merges on top of test_config.yaml. Swaps Docker mode for Apptainer and
+# Apptainer add-on config for local run-apptainer testing.
+# Merged over test_config.yaml. Swaps Docker mode for Apptainer and
 # points containers.dir at a tmp SIF cache so first runs don't pollute
 # .snakemake/.
 

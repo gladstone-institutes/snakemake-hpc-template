@@ -7,7 +7,7 @@ from pathlib import Path
 project_root = Path.cwd()
 
 SCRIPT_PATHS = [
-    "workflow/test_pipeline.sh",
+    "workflow/pipeline.sh",
     "workflow/launch.sh",
     "workflow/scripts/hello.sh",
     "workflow/scripts/calibrate_resources.py",
@@ -56,8 +56,8 @@ else:
     print("Next steps:")
     print("  cd {{ cookiecutter.project_slug }}")
     print("  uv sync")
-    print("  uv run ./workflow/test_pipeline.sh dry-run")
-    print("  uv run ./workflow/test_pipeline.sh run")
+    print("  uv run ./workflow/pipeline.sh dry-run")
+    print("  uv run ./workflow/pipeline.sh run")
     print()
     print("See docs/PIPELINE.md for Wynton SGE and Slurm instructions.")
 print()

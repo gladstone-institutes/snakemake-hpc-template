@@ -4,8 +4,8 @@
 #   # Local testing with Docker
 #   snakemake --configfile workflow/config/test_config.yaml --profile workflow/profiles/local
 #
-#   # Production run on UCSF CoreHPC (Slurm) -- see workflow/launch.sh for
-#   # long runs, which must not be driven from a login shell
+#   # Full run on UCSF CoreHPC (Slurm); use workflow/launch.sh for long runs,
+#   # which must not be started from a login shell
 #   snakemake --configfile workflow/config/config_corehpc.yaml --profile workflow/profiles/slurm
 #
 #   # Wynton SGE (DEPRECATED, unmaintained; still works)
